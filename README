@@ -1,0 +1,5 @@
+This library includes a set of utility functions for data anlaysis in the lab. 
+To install it type the following into the command line while in this directory:
+
+python setup.py install
+
