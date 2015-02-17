@@ -4,6 +4,7 @@ import pickle
 import pkgutil
 import pystan
 import numpy as np
+import appdirs
 
 from patsy import dmatrix, dmatrices
 from scipy.stats import sem
@@ -46,10 +47,29 @@ class OptModel:
     def params(self):
         return {name: self.fit['coefs'][i]
                 for i,name in enumerate(self.mms[1].design_info.column_names)}
+
+def get_model(file_name):
+    object_dir = appdirs.user_cache_dir("pylab_util","David Little")
+    object_file = os.path.join(object_dir,file_name+'.o')
+    
+    if not os.path.isfile(object_file):
+        model_file = pkgutil.get_data('pylab_util','stan/'+file_name+'.stan')
+        model = pystan.StanModel(model_code = model_file.decode())
+
+        try: os.makedirs(object_dir)
+        except OSError:
+            if not os.path.isdir(object_dir): raise
+
+        with open(object_file,'wb') as f: pickle.dump(model,f)
+    else:
+        with open(object_file,'rb') as f: model = pickle.load(object_file)
+
+    return model
+    
         
 def blm(formula,data,optimize=False,**keys):
     mms = dmatrices(formula,data,eval_env=1)
-    model = pickle.loads(pkgutil.get_data('pylab_util','stan/mean.model.o'))
+    model = get_model('mean.model')
 
     if not optimize:
         return SampledModel(model.sampling(data={"N": mms[1].shape[0],
@@ -151,7 +171,7 @@ def blmm(formula,data,groupby,group_formula="",optimize=False,group_init = None,
                                  for j in range(len(labels))}
                                for labels in unique_labels ])
 
-    model = pickle.loads(pkgutil.get_data('pylab_util','stan/ind.model.o'))
+    model = get_model('ind.model')
     
     if not group_init is None:
         def init_fn():
