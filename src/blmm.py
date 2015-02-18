@@ -48,11 +48,11 @@ class OptModel:
         return {name: self.fit['coefs'][i]
                 for i,name in enumerate(self.mms[1].design_info.column_names)}
 
-def get_model(file_name):
+def get_model(file_name,use_cache=True):
     object_dir = appdirs.user_cache_dir("pylab_util","David Little")
     object_file = os.path.join(object_dir,file_name+'.o')
     
-    if not os.path.isfile(object_file):
+    if not os.path.isfile(object_file) or not use_cache:
         model_file = pkgutil.get_data('pylab_util','stan/'+file_name+'.stan')
         model = pystan.StanModel(model_code = model_file.decode())
 
@@ -62,14 +62,14 @@ def get_model(file_name):
 
         with open(object_file,'wb') as f: pickle.dump(model,f)
     else:
-        with open(object_file,'rb') as f: model = pickle.load(object_file)
+        with open(object_file,'rb') as f: model = pickle.load(f)
 
     return model
     
         
-def blm(formula,data,optimize=False,**keys):
+def blm(formula,data,optimize=False,use_cache=True,**keys):
     mms = dmatrices(formula,data,eval_env=1)
-    model = get_model('mean.model')
+    model = get_model('mean.model',use_cache)
 
     if not optimize:
         return SampledModel(model.sampling(data={"N": mms[1].shape[0],
@@ -152,9 +152,9 @@ def unique_rows(a):
     ui[1:] = (diff != 0).any(axis=1) 
     return a[ui]
     
-def blmm(formula,data,groupby,group_formula="",optimize=False,group_init = None,
-         group_mean_prior = 5,group_var_prior = 2.5, group_cor_prior = 2,
-         prediction_error_prior = 1,**keys):
+def blmm(formula,data,groupby,group_formula="",optimize=False,use_cache=True,
+         group_init = None,group_mean_prior = 5,group_var_prior = 2.5,
+         group_cor_prior = 2,prediction_error_prior = 1,**keys):
     
     ind_mms = dmatrices(formula,data,eval_env=1)
     grouped = data.groupby(groupby)
@@ -171,7 +171,7 @@ def blmm(formula,data,groupby,group_formula="",optimize=False,group_init = None,
                                  for j in range(len(labels))}
                                for labels in unique_labels ])
 
-    model = get_model('ind.model')
+    model = get_model('ind.model',use_cache)
     
     if not group_init is None:
         def init_fn():
