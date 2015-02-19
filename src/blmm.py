@@ -49,8 +49,13 @@ class OptModel:
                 for i,name in enumerate(self.mms[1].design_info.column_names)}
 
 def get_model(file_name,use_cache=True):
-    object_dir = appdirs.user_cache_dir("pylab_util","David Little")
-    object_file = os.path.join(object_dir,file_name+'.o')
+
+    if isinstance(use_cache,basestring):
+        object_dir = '.'
+        object_file = use_cache
+    else:
+        object_dir = appdirs.user_cache_dir("pylab_util","David Little")
+        object_file = os.path.join(object_dir,file_name+'.o')
     
     if not os.path.isfile(object_file) or not use_cache:
         model_file = pkgutil.get_data('pylab_util','stan/'+file_name+'.stan')
@@ -84,41 +89,73 @@ def blm(formula,data,optimize=False,use_cache=True,**keys):
                                                "y": np.squeeze(mms[0])},**keys),
                                                formula,mms)
 
+def read_blmm(file):
+    return StoredSampledMultiModel(file)
+
+class StoredSampledMultiModel:
+    def __init__(self,file):
+        store = pd.HDFStore(file,'r')
+        self.y_hat = store['y_hat']
+        self.error = store['error']
+        self.log_prob = store['log_prob']
+        self.ind_coefs = store['ind_coefs']
+        self.group_coefs = store['group_coefs']
+        self.group_cov = store['group_cov']
+        self.formula = store.get_storer('ind_coefs').attrs.formula
+        self.group_formula = store.get_storer('group_coefs').attrs.formula
+        self.groupby = store.get_storer('group_coefs').attrs.groupby
+        store.close()
+
 class SampledMultiModel:
-    def __init__(self,fit,formula,ind_mms,group_mm,group_keys):
-        self.formula = formula
+    def __init__(self,fit,formula,group_formula,groupby,ind_mms,group_mm,group_keys):
         self.fit = fit
-        self.ind_mms = ind_mms
-        self.group_mm = group_mm
-        self.samples = fit.extract()
-        self.group_keys = group_keys
+        self.formula = formula
+        self.group_formula = group_formula
+        self.groupby = groupby
 
-    def error(self):
-        return self.samples['sigma']
+        samples = fit.extract()
 
-    def log_prob(self):
-        return self.samples['lp__']
+        self.y_hat = pd.DataFrame(samples['y_hat'])
+        self.error = pd.Series(samples['sigma'],name='error')
+        self.log_prob = pd.Series(samples['lp__'],name='log_prob')
+        
+        self.ind_coefs = self.__ind_coefs(samples,ind_mms,group_keys)
+        self.group_coefs = self.__group_coefs(samples,ind_mms,group_mm)
+        self.group_cov = self.__group_cov(samples,ind_mms)
 
-    def ind_coefs(self):
-        beta = np.array(self.samples['beta'])
+    def to_hdf(self,file,*params,**kwparams):
+        store = pd.HDFStore(file,*params,**kwparams)
+        store['y_hat'] = self.y_hat
+        store['error'] = self.error
+        store['log_prob'] = self.log_prob
+        store['ind_coefs'] = self.ind_coefs
+        store['group_coefs'] = self.group_coefs
+        store['group_cov'] = self.group_cov
+        store.get_storer('ind_coefs').attrs.formula = self.formula
+        store.get_storer('group_coefs').attrs.formula = self.group_formula
+        store.get_storer('group_coefs').attrs.groupby = self.groupby
+        store.close()
+        
+    def __ind_coefs(self,samples,ind_mms,group_keys):
+        beta = np.array(samples['beta'])
         n_samples = beta.shape[0]
         beta = beta.flatten()
-        coefs = self.ind_mms[1].design_info.column_names
+        coefs = ind_mms[1].design_info.column_names
 
-        indices = np.tile(np.repeat(self.group_keys.index,len(coefs)),n_samples)
-        group_labels = self.group_keys.ix[indices].reset_index(drop=True)
+        indices = np.tile(np.repeat(group_keys.index,len(coefs)),n_samples)
+        group_labels = group_keys.ix[indices].reset_index(drop=True)
         betam = {'value': beta,
                  'index': np.repeat(np.arange(n_samples),
-                                    len(coefs)*len(self.group_keys)),
-                 'coef': np.tile(coefs,len(self.group_keys) * n_samples)}
+                                    len(coefs)*len(group_keys)),
+                 'coef': np.tile(coefs,len(group_keys) * n_samples)}
         betad = pd.DataFrame(betam)
         return pd.concat([betad,group_labels],axis=1)
 
-    def group_coefs(self):
-        gamma = np.array(self.samples['gamma'])
+    def __group_coefs(self,samples,ind_mms,group_mm):
+        gamma = np.array(samples['gamma'])
         n_samples = gamma.shape[0]
-        ind_coefs = self.ind_mms[1].design_info.column_names
-        group_coefs = self.group_mm.design_info.column_names
+        ind_coefs = ind_mms[1].design_info.column_names
+        group_coefs = group_mm.design_info.column_names
 
         gammad = pd.DataFrame({'value': gamma.flatten(),
                                'index': np.repeat(np.arange(n_samples),
@@ -129,10 +166,10 @@ class SampledMultiModel:
 
         return gammad
 
-    def group_cov(self):
-        gcov = np.array(self.samples['Sigma_beta'])
+    def __group_cov(self,samples,ind_mms):
+        gcov = np.array(samples['Sigma_beta'])
         n_samples = gcov.shape[0]
-        coefs = self.ind_mms[1].design_info.column_names
+        coefs = ind_mms[1].design_info.column_names
         
         gcovd = pd.DataFrame({'value': gcov.flatten(),
                             'index': np.repeat(np.arange(n_samples),
@@ -207,4 +244,4 @@ def blmm(formula,data,groupby,group_formula="",optimize=False,use_cache=True,
                                init = init_fn,
                                **keys)
 
-    return SampledMultiModel(fit,formula,ind_mms,group_mm,group_keys)
+    return SampledMultiModel(fit,formula,group_formula,groupby,ind_mms,group_mm,group_keys)

@@ -22,7 +22,9 @@ parameters {
 }
 transformed parameters {
   matrix[J,K] beta;
+  vector[N] y_hat;
   beta <- u * gamma + (diag_pre_multiply(tau,L_Omega) * z)';
+  for (n in 1:N) y_hat[n] <- x[n] * beta[jj[n]]';
 }
 model {
   to_vector(z) ~ normal(0,1);
@@ -31,13 +33,10 @@ model {
   L_Omega ~ lkj_corr_cholesky(group_cor_prior);
 
   sigma ~ normal(0,prediction_error_prior);
-  {
-    vector[N] x_beta_jj;
-    for (n in 1:N) x_beta_jj[n] <- x[n] * beta[jj[n]]';
-    y ~ normal(x_beta_jj, sigma);
-  }
+  y ~ normal(y_hat, sigma);
 }
 generated quantities{
   matrix[K,K] Sigma_beta;
+
   Sigma_beta <- diag_pre_multiply(tau,L_Omega) * diag_pre_multiply(tau,L_Omega)';
 }
