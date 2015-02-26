@@ -8,5 +8,5 @@ setup(name='pylab_util',version='0.0.2',author='David Little',
       package_data={'pylab_util': ['stan/*.stan']},
       requires=['statsmodels(>=0.5.0)',
                 'pystan(>=2.5.0)',
-                'patsy(>=0.3.0)',
+                'patsy(>=0.3.0)','matplotlib',
                 'numpy','pandas','appdirs'])
