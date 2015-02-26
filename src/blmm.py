@@ -5,7 +5,7 @@ import pkgutil
 import pystan
 import numpy as np
 import appdirs
-
+import scipy
 import patsy
 from scipy.stats import sem
 
@@ -93,7 +93,8 @@ def read_multi_fit(file):
     ind_formula = read_formula(store,'ind_coefs')
     group_formula = read_formula(store,'group_coefs')
     model = \
-      SampledMultiModel(y_hat = store['y_hat'],
+      SampledMultiModel(data = store['data'],
+                        y_hat = store['y_hat'],
                         error = store['error'],
                         log_prob = store['log_prob'],
 
@@ -108,10 +109,11 @@ def read_multi_fit(file):
 
     return model
 
-def create_multi_fit(fit,ind_formula,group_formula,groupby,ind_mms,group_mm,group_keys):
+def create_multi_fit(data,fit,ind_formula,group_formula,groupby,ind_mms,group_mm,group_keys):
     samples = fit.extract()
     model = \
-        SampledMultiModel(y_hat = pd.DataFrame(samples['y_hat']),
+        SampledMultiModel(data = data,
+                          y_hat = pd.DataFrame(samples['y_hat']),
                           error = pd.Series(samples['sigma'],name='error'),
                           log_prob = pd.Series(samples['lp__'],name='log_prob'),
 
@@ -188,9 +190,10 @@ def __group_cov(samples,ind_mms):
     return gcovd.set_index(['sample','coef1','coef2'])
 
 class SampledMultiModel:
-    def __init__(self,y_hat,error,log_prob,ind_coefs,group_coefs,
+    def __init__(self,data,y_hat,error,log_prob,ind_coefs,group_coefs,
                  group_cov,ind_formula,group_formula,groupby):
-
+    
+        self.data = data
         self.y_hat = y_hat
         self.error = error
         self.log_prob = log_prob
@@ -206,38 +209,45 @@ class SampledMultiModel:
         
     def to_hdf(self,file,*params,**kwparams):
         store = pd.HDFStore(file,*params,**kwparams)
+        store['data'] = self.data
+
         store['y_hat'] = self.y_hat
         store['error'] = self.error
         store['log_prob'] = self.log_prob
+
         store['ind_coefs'] = self.ind_coefs
         store['group_coefs'] = self.group_coefs
         store['group_cov'] = self.group_cov
 
         self.ind_formula.to_store(store,'ind_coefs')
-        self.ind_formula.to_store(store,'group_coefs')
+        self.group_formula.to_store(store,'group_coefs')
         store.get_storer('group_coefs').attrs.groupby = self.groupby
         store.close()
         
-    def predict_individuals(self,data,sample_indices):
+    def predict_individuals(self,data):
+        n_samples = len(self.ind_coefs.index.levels[0])
+        n_coefs = len(self.ind_coefs.index.levels[2])
+
         def find_group(data_for_group):
             try:
                 return tuple(data_for_group[self.groupby].iloc[0].values)
             except AttributeError:
                 return tuple(data_for_group[[self.groupby]].iloc[0])
 
-        def find_coef_samples(sample_indices,group):
-            samples = self.ind_coefs.loc[sample_indices]
-            coefs = samples.loc[(slice(None),) + group + (slice(None),),:].values.view()
-            coefs.shape = (len(sample_indices),len(coefs)/len(sample_indices))
+        def find_coef_samples(group):
+            group_slice = (slice(None),) + group + (slice(None),)
+            coefs = self.ind_coefs.loc[group_slice,:].values.view()
+            coefs.shape = (n_samples,n_coefs)
+
             return coefs.T
 
         def predict_group_ind(data_for_group):
-            coefs = find_coef_samples(sample_indices,find_group(data_for_group))
+            coefs = find_coef_samples(find_group(data_for_group))
             mm = self.ind_formula.dmatrices(data_for_group)[1]
             predictions = mm.dot(coefs)
 
             pred_cols = pd.DataFrame({'prediction': predictions.flatten(),
-                                      'sample': np.tile(sample_indices,
+                                      'sample': np.tile(self.ind_coefs.index.levels[0],
                                                         predictions.shape[0])})
             data_cols = data_for_group.loc[np.repeat(data_for_group.index.values,
                                            predictions.shape[1])].reset_index(drop=True)
@@ -245,13 +255,14 @@ class SampledMultiModel:
             return pd.concat([data_cols,pred_cols],axis=1)
         return data.groupby(self.groupby).apply(predict_group_ind)
         
-    def predict_group(self,data,sample_indices):
+    def sample_group(self,data):
         # setup group predictors
         grouped = data.groupby(self.groupby)
-        gmm = self.group_formula.dmatrix(grouped.head(1))
+        group_cols = grouped.head(1).reset_index(drop=True)
+        gmm = self.group_formula.dmatrix(group_cols)
         
         # setup individual predictors
-        mm = self.ind_formula.dmatrices(data)[1]
+        ##mm = self.ind_formula.dmatrices(data)[1]
         group_indices,_  = _organize_group_labels(grouped)
         gshape = (len(self.group_coefs.index.levels[1]),
                   len(self.group_coefs.index.levels[2]))
@@ -270,7 +281,7 @@ class SampledMultiModel:
             return cov
 
         def sample_ind_coefs(sample_index):
-            mean_coefs = gmm * sample_group_coefs(sample_index)
+            mean_coefs = gmm.dot(sample_group_coefs(sample_index))
             cov = sample_group_cov(sample_index)
             coef_offsets = \
               np.random.multivariate_normal(np.zeros(mean_coefs.shape[1]),cov,
@@ -279,16 +290,44 @@ class SampledMultiModel:
         
         def sample_groups(sample_index):
             ind_coefs = sample_ind_coefs(sample_index)
+            coef_cols = pd.DataFrame(ind_coefs[group_indices,:],
+                                     columns=self.ind_coefs.index.levels[2])
 
-            # find the dot product of each row of mm and individual coefficients,
-            # selecting individual coeffecients for the appropriate group
-            predictions = np.einsum('ij,ij->i',mm,ind_coefs[group_indices,:])
-            
-            pred_cols = pd.DataFrame({'prediction': predictions,'sample': sample_index})
-            data_cols = data.reset_index(drop=True)
-            return pd.concat([data_cols,pred_cols],axis=1)
+            return pd.concat([group_cols,coef_cols],axis=1)
 
-        return pd.concat(sample_groups(i) for i in sample_indices)
+        return pd.concat(sample_groups(i) for i in self.group_coefs.index.levels[0])
+
+    def WAIC_samples(self,bootstrap=1000):
+        y = self.ind_formula.dmatrices(self.data)[0]
+        samples = \
+          np.array([scipy.stats.norm.pdf(self.y_hat.iloc[:,n] - y[n],self.error)
+                    for n in range(len(y))])
+
+        if isinstance(bootstrap,(np.ndarray,np.matrix)):
+            bootstrap_weights = bootstrap
+            bootstrap = bootstrap_weights.shape[1]
+        else:
+            bootstrap_weights = np.random.dirichlet(np.ones(samples.shape[1]),
+                                                    size=bootstrap)
+
+        bootstrap_waic = np.array([np.mean(samples * bootstrap_weights[i,:],axis=1) -
+                                   np.std(samples * bootstrap_weights[i,:],axis=1,ddof=1)
+                                   for i in range(bootstrap)])
+        return bootstrap_waic,bootstrap_weights
+
+    def WAIC(self,bootstrap=1000):
+        bootstrap_waic,_ = self.WAIC_samples(bootstrap)
+        return np.mean(bootstrap_waic),np.percentile(bootstrap_waic,[97.5,2.5])
+
+    def WAIC_diff_samples(self,model,bootstrap=1000):
+        waic1,bootstrap = self.WAIC_samples(bootstrap)
+        waic2,_ = model.WAIC_samples(bootstrap)
+        diff = waic1 - waic2
+        return diff,bootstrap
+
+    def WAIC_diff(self,model,bootstrap=1000):
+        diff,_ = WAIC_diff_samples(model,bootstrap)
+        return np.mean(diff),np.percentile(diff,[97.5,2.5])
 
 def unique_rows(a):
     order = np.lexsort(a.T)
@@ -337,17 +376,21 @@ def _init_fn(group_init,ind_mms,group_mm):
 
 def read_formula(store,key):
     import dill
-    return SaveableFormula(dill.loads(store.get_storer(key).attrs.builder))
+    builder = dill.loads(store.get_storer(key).attrs.builder)
+    return SaveableFormula(builder)
 
-def saveable_formula(formula,data,eval_env):
+def saveable_formulas(formula,data,eval_env):
     return SaveableFormula(patsy.incr_dbuilders(formula,lambda: iter([data]),
-                                                eval_env=eval_env+1))
+                           eval_env=eval_env+1))
+def saveable_formula(formula,data,eval_env):
+    return SaveableFormula(patsy.incr_dbuilder(formula,lambda: iter([data]),
+                            eval_env=eval_env+1))
 
 class SaveableFormula:
     def __init__(self,builders):
         self.builders = builders
     def dmatrix(self,data):
-        return patsy.build_design_matrices(self.builders,data)[1]
+        return patsy.build_design_matrices([self.builders],data)[0]
     def dmatrices(self,data):
         return patsy.build_design_matrices(self.builders,data)
     def to_store(self,store,key):
@@ -358,12 +401,12 @@ def blmm(formula,data,groupby,group_formula="",optimize=False,use_cache=True,
          group_init = None,group_mean_prior = 5,group_var_prior = 2.5,
          group_cor_prior = 2,prediction_error_prior = 1,eval_env=0,**keys):
 
-    ind_formula = saveable_formula(formula,data,eval_env+1)
+    ind_formula = saveable_formulas(formula,data,eval_env+1)
     ind_mms = ind_formula.dmatrices(data)
 
     grouped = data.groupby(groupby)
     group_data = grouped.head(1)
-    group_formula = saveable_formula(formula,group_data,eval_env+1)
+    group_formula = saveable_formula(group_formula,group_data,eval_env+1)
     group_mm = group_formula.dmatrix(group_data)
     group_indices,group_keys = _organize_group_labels(grouped)
 
@@ -382,5 +425,5 @@ def blmm(formula,data,groupby,group_formula="",optimize=False,use_cache=True,
                                init = _init_fn(group_init,ind_mms,group_mm),
                                **keys)
 
-    return create_multi_fit(fit,ind_formula,group_formula,groupby,
+    return create_multi_fit(data,fit,ind_formula,group_formula,groupby,
                             ind_mms,group_mm,group_keys)
