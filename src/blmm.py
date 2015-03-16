@@ -227,7 +227,8 @@ class SampledMultiModel:
     def predict_individuals(self,data):
         n_samples = len(self.ind_coefs.index.levels[0])
         n_coefs = len(self.ind_coefs.index.levels[2])
-
+        data['row'] = range(data.shape[0])
+        
         def find_group(data_for_group):
             try:
                 return tuple(data_for_group[self.groupby].iloc[0].values)
@@ -246,15 +247,53 @@ class SampledMultiModel:
             mm = self.ind_formula.dmatrices(data_for_group)[1]
             predictions = mm.dot(coefs)
 
-            pred_cols = pd.DataFrame({'prediction': predictions.flatten(),
-                                      'sample': np.tile(self.ind_coefs.index.levels[0],
-                                                        predictions.shape[0])})
-            data_cols = data_for_group.loc[np.repeat(data_for_group.index.values,
-                                           predictions.shape[1])].reset_index(drop=True)
+            pred_cols = \
+              pd.DataFrame({'prediction': predictions.flatten(),
+                            'sample': np.tile(self.ind_coefs.index.levels[0],
+                                              predictions.shape[0])})
+            data_cols = \
+              data_for_group.loc[np.repeat(data_for_group.index.values,
+                                 predictions.shape[1])].reset_index(drop=True)
             del data_cols[self.groupby]
             return pd.concat([data_cols,pred_cols],axis=1)
-        return data.groupby(self.groupby).apply(predict_group_ind)
+
+        result = data.groupby(self.groupby).apply(predict_group_ind)
+        result.sort(columns=['sample','row'],inplace=True)
+        return result
+
+    def __group_coefs(self,sample_index,gshape):
+            gcoefs = self.group_coefs.loc[sample_index].reset_index()
+            gcoefs = gcoefs.value.values.view()
+            gcoefs.shape = gshape
+            return gcoefs
+
+    def __group_cov(self,sample_index,cov_shape):
+            cov = self.group_cov.loc[sample_index].values.view()
+            cov.shape = cov_shape
+            return cov
+
+    def group_mean_prediction(self,data):
+        # setup group predictors
+        grouped = data.groupby(self.groupby)
+        group_cols = grouped.head(1).reset_index(drop=True)
+        gmm = self.group_formula.dmatrix(group_cols)
         
+        # setup individual predictors
+        mm = self.ind_formula.dmatrices(data)[1]
+        group_indices,_  = _organize_group_labels(grouped)
+        gshape = (len(self.group_coefs.index.levels[1]),
+                  len(self.group_coefs.index.levels[2]))
+
+        def helper(sample_index):
+            ind_coefs = gmm.dot(self.__group_coefs(sample_index,gshape))
+            predictions = np.einsum('ij,ij->i',mm,ind_coefs[group_indices,:])
+            
+            d = data.copy()
+            d['group_mean'] = predictions
+            d['sample'] = sample_index
+            return d
+        return pd.concat([helper(i) for i in self.group_coefs.index.levels[0]])
+
     def sample_group(self,data):
         # setup group predictors
         grouped = data.groupby(self.groupby)
@@ -269,20 +308,9 @@ class SampledMultiModel:
         cov_shape = (len(self.group_coefs.index.levels[2]),
                      len(self.group_coefs.index.levels[2]))
 
-        def sample_group_coefs(sample_index):
-            gcoefs = self.group_coefs.loc[sample_index].reset_index()
-            gcoefs = gcoefs.value.values.view()
-            gcoefs.shape = gshape
-            return gcoefs
-
-        def sample_group_cov(sample_index):
-            cov = self.group_cov.loc[sample_index].values.view()
-            cov.shape = cov_shape
-            return cov
-
         def sample_ind_coefs(sample_index):
-            mean_coefs = gmm.dot(sample_group_coefs(sample_index))
-            cov = sample_group_cov(sample_index)
+            mean_coefs = gmm.dot(self.__group_coefs(sample_index,gshape))
+            cov = self.__group_cov(sample_index,cov_shape)
             coef_offsets = \
               np.random.multivariate_normal(np.zeros(mean_coefs.shape[1]),cov,
                                             mean_coefs.shape[0])
@@ -292,42 +320,33 @@ class SampledMultiModel:
             ind_coefs = sample_ind_coefs(sample_index)
             coef_cols = pd.DataFrame(ind_coefs[group_indices,:],
                                      columns=self.ind_coefs.index.levels[2])
+            coef_cols['sample'] = sample_index
 
             return pd.concat([group_cols,coef_cols],axis=1)
 
-        return pd.concat(sample_groups(i) for i in self.group_coefs.index.levels[0])
+        return pd.concat(sample_groups(i)
+                         for i in self.group_coefs.index.levels[0])
 
-    def WAIC_samples(self,bootstrap=1000):
+    def WAIC_fn(self):
         y = self.ind_formula.dmatrices(self.data)[0]
+        N = len(y)
         samples = \
           np.array([scipy.stats.norm.pdf(self.y_hat.iloc[:,n] - y[n],self.error)
-                    for n in range(len(y))])
+                    for n in range(N)])
+        
+        def waic(weights=1):
+            try:
+                if len(weights.shape) < 2: weights = weights[:,np.newaxis]
+            except AttributeError: pass
+            return -2*(np.log(np.mean(samples * weights,axis=1)) - \
+                       np.std(np.log(samples) * weights,axis=1,ddof=1))
 
-        if isinstance(bootstrap,(np.ndarray,np.matrix)):
-            bootstrap_weights = bootstrap
-            bootstrap = bootstrap_weights.shape[1]
-        else:
-            bootstrap_weights = np.random.dirichlet(np.ones(samples.shape[1]),
-                                                    size=bootstrap)
+        waic.boot_size = N
+        return waic
 
-        bootstrap_waic = np.array([np.mean(samples * bootstrap_weights[i,:],axis=1) -
-                                   np.std(samples * bootstrap_weights[i,:],axis=1,ddof=1)
-                                   for i in range(bootstrap)])
-        return bootstrap_waic,bootstrap_weights
-
-    def WAIC(self,bootstrap=1000):
-        bootstrap_waic,_ = self.WAIC_samples(bootstrap)
-        return np.mean(bootstrap_waic),np.percentile(bootstrap_waic,[97.5,2.5])
-
-    def WAIC_diff_samples(self,model,bootstrap=1000):
-        waic1,bootstrap = self.WAIC_samples(bootstrap)
-        waic2,_ = model.WAIC_samples(bootstrap)
-        diff = waic1 - waic2
-        return diff,bootstrap
-
-    def WAIC_diff(self,model,bootstrap=1000):
-        diff,_ = WAIC_diff_samples(model,bootstrap)
-        return np.mean(diff),np.percentile(diff,[97.5,2.5])
+    def WAIC(self):
+        fn = self.WAIC_fn()
+        return fn()
 
 def unique_rows(a):
     order = np.lexsort(a.T)
