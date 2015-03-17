@@ -1,3 +1,4 @@
+import re
 import os.path
 import pandas as pd
 import pickle
@@ -361,6 +362,7 @@ def _organize_group_labels(grouped):
     unique_labels = unique_rows(group_labels)
     group_index_map = {tuple(labels): i
                        for i,labels in enumerate(unique_labels)}
+
     group_indices = np.array([group_index_map[tuple(labels)]
                               for labels in group_labels])
     
@@ -393,9 +395,9 @@ def _init_fn(group_init,ind_mms,group_mm):
                     "sigma": np.random.rand()}
     return init
 
-def read_formula(store,key):
+def read_formula(store,key,error_if_absent=True):
     import dill
-    builder = dill.loads(store.get_storer(key).attrs.builder)
+    builder = dill.loads(store.get_storer(key).attrs.formula)
     return SaveableFormula(builder)
 
 def saveable_formulas(formula,data,eval_env):
@@ -414,35 +416,107 @@ class SaveableFormula:
         return patsy.build_design_matrices(self.builders,data)
     def to_store(self,store,key):
         import dill
-        store.get_storer(key).attrs.builder = dill.dumps(self.builders)
+        store.get_storer(key).attrs.formula = dill.dumps(self.builders)
 
-def blmm(formula,data,groupby,group_formula="",optimize=False,use_cache=True,
-         group_init = None,group_mean_prior = 5,group_var_prior = 2.5,
-         group_cor_prior = 2,prediction_error_prior = 1,eval_env=0,**keys):
+# def blmm(formula,data,use_cache=True,
+#          fixed_mean_prior = 2.5,group_init = None,group_mean_prior = 5,
+#          group_var_prior = 2.5,group_cor_prior = 2,prediction_error_prior = 1,
+#          eval_env=0,**keys):
 
-    ind_formula = saveable_formulas(formula,data,eval_env+1)
-    ind_mms = ind_formula.dmatrices(data)
+#     match = re.match(r'^(?P<outcome>\S+)\s*~\s*(?P<fixed>\S.+)'
+#                      r'(+\s*\((?P<individual>\S[^\|]+)|'
+#                      r'(?P<groupby>[^[]]+)'
+#                      r'((?P<group>[^]]+)])?\s*\))?\s*$',formula)
 
-    grouped = data.groupby(groupby)
-    group_data = grouped.head(1)
-    group_formula = saveable_formula(group_formula,group_data,eval_env+1)
-    group_mm = group_formula.dmatrix(group_data)
-    group_indices,group_keys = _organize_group_labels(grouped)
+#     outcome_str = match.group('outcome')
+#     fixed_str = outcome_str + '~' + match.group('fixed')
+#     ind_str = match.group('individual')
+#     if match.group('group'):
+#         group_formula = match.group('group')
+#     else:
+#         group_formula = ''
+#     groupby = match.group('groupby').split(r'\s*+\s*',groupbystr)
 
-    model = get_model('ind.model',use_cache)
+#     fixed_formula = saveable_formulas(fixed_str,eval_env+1)
+#     fixed_mms = fixed_formula.dmatrices(data)
+
+#     ind_formula = saveable_formulas(ind_str,data,eval_env+1)
+#     ind_mm = ind_formula.dmatrix(data)
+
+#     grouped = data.groupby(groupby)
+#     group_data = grouped.head(1)
+#     group_formula = saveable_formula(group_formula,group_data,eval_env+1)
+#     group_mm = group_formula.dmatrix(group_data)
+#     group_indices,group_keys = _organize_group_labels(grouped)
+
+#     model = get_model('mixed.model',use_cache)
         
-    fit = model.sampling(data={"N": ind_mms[1].shape[0],
-                               "K": ind_mms[1].shape[1],
-                               "J": group_mm.shape[0], "L": group_mm.shape[1],
-                               "jj": group_indices+1,
-                               "x": ind_mms[1], "u": group_mm,
-                               "y": np.squeeze(ind_mms[0]),
-                               "prediction_error_prior": prediction_error_prior,
-                               "group_mean_prior": group_mean_prior,
-                               "group_var_prior": group_var_prior,
-                               "group_cor_prior": group_cor_prior},
-                               init = _init_fn(group_init,ind_mms,group_mm),
-                               **keys)
+#     fit = model.sampling(data={"N": ind_mm.shape[0],
+#                                "K": ind_mm.shape[1],
+#                                "J": group_mm.shape[0],
+#                                "L": group_mm.shape[1],
+#                                "M": fixed_mms[1].shape[1]
+#                                "jj": group_indices+1,
+#                                "x": ind_mms[1], "xf": fixed_mm, "u": group_mm,
+#                                "y": np.squeeze(ind_mms[0]),
+#                                "prediction_error_prior": prediction_error_prior,
+#                                "group_mean_prior": group_mean_prior,
+#                                "group_var_prior": group_var_prior,
+#                                "group_cor_prior": group_cor_prior},
+#                                init = _init_fn(group_init,ind_mms,group_mm),
+#                                **keys)
 
-    return create_multi_fit(data,fit,ind_formula,group_formula,groupby,
-                            ind_mms,group_mm,group_keys)
+#     return create_multi_fit(data,fit,fixed_formula,ind_formula,group_formula,groupby,
+#                             ind_mms,group_mm,group_keys)
+
+def regex_formula(df,pattern,formula,extract,eval_env=0):
+    formula = saveable_formula(re.match(pattern,formula).group(extract),
+                               df,eval_env+1)
+
+    X = formula.dmatrix(df)
+    return formula,X,X.shape[0],X.shape[1]
+
+def regex_formulas(df,pattern,formula,extract,eval_env=0):
+    formula = saveable_formulas(re.match(pattern,formula).group(extract),
+                                df,eval_env+1)
+
+    y,X = formula.dmatrices(df)
+    return formula,np.squeeze(y),X,X.shape[0],X.shape[1]
+
+def regex_get_groups(df,pattern,splitby,formula,extract):
+    groups_str = re.match(pattern,formula).group(extract)
+    groupby = map(lambda x: x.strip(),re.split(splitby,groups_str.strip()))
+    group_df = df.groupby(groupby)
+    group_indices,group_keys = _organize_group_labels(group_df)
+
+    return group_df.head(1),group_indices,group_keys
+
+def write_samples(samples,file,formulae,groupers,*params,**kwparams):
+    store = pd.HDFStore(file,*params,**kwparams)
+    for key in samples.keys():
+        indices = list(np.where(np.ones(samples[key].shape)))
+        index_str = ['sample'] + ['index%02d' % i for i in range(len(indices)-1)]
+        values = samples[key].flatten()
+        columns = index_str + ['value']
+        store[key] = pd.DataFrame(dict(zip(columns,indices + [values])),columns = columns)
+
+        if formulae.has_key(key):
+            print "storing formula: ",key
+            formulae[key].to_store(store,key)
+        if groupers.has_key(key):
+            print "storing grouper: ",key
+            store.get_storer(key).attrs.grouper = groupers[key]
+
+def read_samples(file,*params,**kwparams):
+    store = pd.HDFStore(file,*params,**kwparams)
+    samples = {}
+    formulae = {}
+    groupers = {}
+    for key in store.keys():
+        samples[key] = store[key]
+        if hasattr(store.get_storer(key).attrs,'formula'):
+            formulae[key] = read_formula(store,key)
+        if hasattr(store.get_storer(key).attrs,'grouper'):
+            groupers[key] = store.get_storer(key).attrs.grouper
+
+    return samples,formulae,groupers
