@@ -501,10 +501,8 @@ def write_samples(samples,file,formulae,groupers,*params,**kwparams):
         store[key] = pd.DataFrame(dict(zip(columns,indices + [values])),columns = columns)
 
         if formulae.has_key(key):
-            print "storing formula: ",key
             formulae[key].to_store(store,key)
         if groupers.has_key(key):
-            print "storing grouper: ",key
             store.get_storer(key).attrs.grouper = groupers[key]
 
 def read_samples(file,*params,**kwparams):
