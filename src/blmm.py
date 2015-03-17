@@ -493,7 +493,7 @@ def regex_get_groups(df,pattern,splitby,formula,extract):
 
     return group_df.head(1),group_indices,group_keys
 
-def write_samples(samples,file,formulae,groupers,*params,**kwparams):
+def write_samples(samples,file,formulae={},groupers={},*params,**kwparams):
     store = pd.HDFStore(file,*params,**kwparams)
     for key in samples.keys():
         indices = list(np.where(np.ones(samples[key].shape)))
