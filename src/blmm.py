@@ -470,16 +470,18 @@ class SaveableFormula:
 #                             ind_mms,group_mm,group_keys)
 
 def regex_formula(df,pattern,formula,extract,eval_env=0):
-    formula = saveable_formula(re.match(pattern,formula).group(extract),
-                               df,eval_env+1)
+    formula_str = re.match(pattern,formula).group(extract)
+    if not formula_str: formula_str = ''
 
+    formula = saveable_formula(formula_str,df,eval_env+1)
     X = formula.dmatrix(df)
     return formula,X,X.shape[0],X.shape[1]
 
 def regex_formulas(df,pattern,formula,extract,eval_env=0):
-    formula = saveable_formulas(re.match(pattern,formula).group(extract),
-                                df,eval_env+1)
-
+    formula_str = re.match(pattern,formula).group(extract)
+    if not formula_str: formula_str = ''
+    
+    formula = saveable_formulas(formula_str,df,eval_env+1)
     y,X = formula.dmatrices(df)
     return formula,np.squeeze(y),X,X.shape[0],X.shape[1]
 
