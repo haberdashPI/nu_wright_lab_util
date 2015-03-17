@@ -16,9 +16,11 @@ def sig_indicator(p_val):
     else:
         return '   '
 
-def coef_stats(xs):
-    return pd.Series(np.array([np.mean(xs), np.percentile(xs,02.5),
-                               np.percentile(xs,97.5), p_value(xs),
+def coef_stats(xs,round=3):
+    return pd.Series(np.array([np.around(np.mean(xs),round),
+                               np.around(np.percentile(xs,02.5),round),
+                               np.around(np.percentile(xs,97.5),round),
+                               np.around(p_value(xs),round),
                                sig_indicator(p_value(xs))]),
                      index=['mean','lower','upper','p_value','sig'],name='stats')
 
