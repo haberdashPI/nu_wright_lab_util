@@ -469,25 +469,22 @@ class SaveableFormula:
 #     return create_multi_fit(data,fit,fixed_formula,ind_formula,group_formula,groupby,
 #                             ind_mms,group_mm,group_keys)
 
-def regex_formula(df,pattern,formula,extract,eval_env=0):
-    formula_str = re.match(pattern,formula).group(extract)
-    if not formula_str: formula_str = ''
+def dmatrix(df,extracted,eval_env=0):
+    if not extracted: extracted = ''
 
-    formula = saveable_formula(formula_str,df,eval_env+1)
+    formula = saveable_formula(extracted,df,eval_env+1)
     X = formula.dmatrix(df)
-    return formula,X,X.shape[0],X.shape[1]
+    return formula,X
 
-def regex_formulas(df,pattern,formula,extract,eval_env=0):
-    formula_str = re.match(pattern,formula).group(extract)
-    if not formula_str: formula_str = ''
+def dmatrices(df,extracteded,eval_env=0):
+    if not extracted: extracted = ''
     
-    formula = saveable_formulas(formula_str,df,eval_env+1)
+    formula = saveable_formulas(extracted,df,eval_env+1)
     y,X = formula.dmatrices(df)
-    return formula,np.squeeze(y),X,X.shape[0],X.shape[1]
+    return formula,np.squeeze(y),X
 
-def regex_get_groups(df,pattern,splitby,formula,extract):
-    groups_str = re.match(pattern,formula).group(extract)
-    groupby = map(lambda x: x.strip(),re.split(splitby,groups_str.strip()))
+def setup_groups(df,groups):
+    groupby = map(lambda x: x.strip(),groups)
     group_df = df.groupby(groupby)
     group_indices,group_keys = _organize_group_labels(group_df)
 
