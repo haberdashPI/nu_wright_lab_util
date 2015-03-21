@@ -484,7 +484,6 @@ def dmatrices(df,extracteded,eval_env=0):
     return formula,np.squeeze(y),X
 
 def setup_groups(df,groups):
-    groupby = map(lambda x: x.strip(),groups)
     group_df = df.groupby(groupby)
     group_indices,group_keys = _organize_group_labels(group_df)
 
