@@ -489,7 +489,7 @@ def setup_groups(df,groups):
 
     return group_df.head(1),group_indices,group_keys
 
-def write_samples(samples,file,formulae={},groupers={},*params,**kwparams):
+def write_samples(samples,file,*params,**kwparams):
     store = pd.HDFStore(file,*params,**kwparams)
     for key in samples.keys():
         indices = list(np.where(np.ones(samples[key].shape)))
@@ -498,21 +498,10 @@ def write_samples(samples,file,formulae={},groupers={},*params,**kwparams):
         columns = index_str + ['value']
         store[key] = pd.DataFrame(dict(zip(columns,indices + [values])),columns = columns)
 
-        if formulae.has_key(key):
-            formulae[key].to_store(store,key)
-        if groupers.has_key(key):
-            store.get_storer(key).attrs.grouper = groupers[key]
-
 def read_samples(file,*params,**kwparams):
     store = pd.HDFStore(file,*params,**kwparams)
     samples = {}
-    formulae = {}
-    groupers = {}
     for key in store.keys():
         samples[key] = store[key]
-        if hasattr(store.get_storer(key).attrs,'formula'):
-            formulae[key] = read_formula(store,key)
-        if hasattr(store.get_storer(key).attrs,'grouper'):
-            groupers[key] = store.get_storer(key).attrs.grouper
 
-    return samples,formulae,groupers
+    return samples
