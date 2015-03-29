@@ -505,3 +505,14 @@ def read_samples(file,*params,**kwparams):
         samples[key] = store[key]
 
     return samples
+
+def load_model(prefix):
+    model_file = prefix+".stan"
+    object_file = prefix+".o"
+    if not os.path.isfile(object_file):
+        model = pystan.StanModel(model_file)
+        with open(object_file,'wb') as f: pickle.dump(model,f)
+    else:
+        with open(object_file,'rb') as f: model = pickle.load(f)
+
+    return model
