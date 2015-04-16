@@ -1,3 +1,4 @@
+import h5py
 import re
 import os.path
 import pandas as pd
@@ -490,19 +491,17 @@ def setup_groups(df,groups):
     return group_df.head(1),group_indices,group_keys
 
 def write_samples(samples,file,*params,**kwparams):
-    store = pd.HDFStore(file,*params,**kwparams)
-    for key in samples.keys():
-        indices = list(np.where(np.ones(samples[key].shape)))
-        index_str = ['sample'] + ['index%02d' % i for i in range(len(indices)-1)]
-        values = samples[key].flatten()
-        columns = index_str + ['value']
-        store[key] = pd.DataFrame(dict(zip(columns,indices + [values])),columns = columns)
-
+    with h5py.File(file,'w',*params,**kwparams) as store:
+        for key in samples.keys():
+            store[key] = samples[key]
+    
 def read_samples(file,*params,**kwparams):
-    store = pd.HDFStore(file,*params,**kwparams)
     samples = {}
-    for key in store.keys():
-        samples[key] = store[key]
+    with h5py.File(file,'r',*params,**kwparams) as store:
+        for key in store.keys():
+            x = np.zeros(store[key].shape,dtype=store[key].dtype)
+            store[key].read_direct(x)
+            samples[key] = x
 
     return samples
 
