@@ -477,7 +477,7 @@ def dmatrix(df,extracted,eval_env=0):
     X = formula.dmatrix(df)
     return formula,X
 
-def dmatrices(df,extracteded,eval_env=0):
+def dmatrices(df,extracted,eval_env=0):
     if not extracted: extracted = ''
     
     formula = saveable_formulas(extracted,df,eval_env+1)
