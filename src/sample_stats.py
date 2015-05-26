@@ -3,7 +3,7 @@ import pandas as pd
 
 def p_value(xs):
     xs = xs[~np.isnan(xs)]
-    return min(1.0,2*np.mean(np.sign(xs) != np.sign(np.mean(xs))))
+    return min(1.0,2*np.mean(np.sign(xs) != np.sign(np.median(xs))))
 def sig_indicator(p_val):
     if p_val < 0.001:
          return '***'
@@ -16,6 +16,23 @@ def sig_indicator(p_val):
     else:
         return '   '
 
+def coef_table(samples,names=None,round=3):
+    if names is None: data = pd.DataFrame(samples,columns=names)
+    else: data = pd.DataFrame(samples,columns=names)
+    return data.apply(lambda xs: coef_stats(xs,round)).T
+    
+def contrast_table(samples,names=None,round=3):
+    if names is None: data = pd.DataFrame(samples,columns=names)
+    else: data = pd.DataFrame(samples,columns=names)
+
+    comp_data = pd.DataFrame()
+    for i in range(data.shape[1]-1):
+        for j in range(i+1,data.shape[1]):
+            comp_data[data.columns[i]+' - '+data.columns[j]] = \
+              data.iloc[:,i] - data.iloc[:,j]
+            
+    return comp_data.apply(lambda xs: coef_stats(xs,round)).T
+
 def coef_stats(xs,round=3):
     return pd.Series(np.array([np.around(np.mean(xs),round),
                                np.around(np.percentile(xs,02.5),round),
@@ -24,22 +41,26 @@ def coef_stats(xs,round=3):
                                sig_indicator(p_value(xs))]),
                      index=['mean','lower','upper','p_value','sig'],name='stats')
 
-def ppp(y,y_hats,error,stats,N=1000):
-    def test(y,y_hat,error):
+def normal_error_fn(error):
+    def fn(y_hat,i):
+        return np.random.normal(scale=error[i],size=y_hat.shape[0])
+    return fn
+
+def ppp(y,y_hats,error_fn,stats,N=1000):
+    def test(y,y_hat,error_fn,i):
         diffs = y_hat - y
-        fake_diffs = np.random.normal(scale=error,size=len(y_hat))
+        fake_diffs = error_fn(y_hat,i)
 
         return pd.DataFrame([{'real': stat(diffs),'fake': stat(fake_diffs),
                               'type': name}
                               for name, stat in stats.iteritems()])
 
     if N is None:
-        return pd.concat([test(y,y_hats[i,:],error[i])
-                          for i in range(len(error))])
+        return pd.concat([test(y,y_hats[i,:],error_fn,i)
+                          for i in range(y_hat.shape[0])])
     else:
         samples = np.random.randint(y_hats.shape[0],size=N)
-        return pd.concat([test(y,y_hats[i,:],error[i]) for i in samples])    
-
+        return pd.concat([test(y,y_hats[i,:],error_fn,i) for i in samples])
 
 def bootstrap_samples(stat_fn,bootstrap=1000):
     if isinstance(bootstrap,(np.ndarray,np.matrix)):
