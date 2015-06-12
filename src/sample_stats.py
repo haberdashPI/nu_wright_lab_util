@@ -30,10 +30,12 @@ def contrast_table(samples,names=None,round=3):
     if names is None: data = pd.DataFrame(samples,columns=names)
     else: data = pd.DataFrame(samples,columns=names)
 
+    columns = data.columns.tolist()
+
     comp_data = pd.DataFrame()
     for i in range(data.shape[1]-1):
         for j in range(i+1,data.shape[1]):
-            comp_data[data.columns[i]+' - '+data.columns[j]] = \
+            comp_data[str(columns[i])+' - '+str(columns[j])] = \
               data.iloc[:,i] - data.iloc[:,j]
 
     return comp_data.apply(lambda xs: coef_stats(xs,round)).T
