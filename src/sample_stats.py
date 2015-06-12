@@ -43,11 +43,12 @@ def contrast_table(samples,names=None,round=3):
 
 def coef_stats(xs,round=3):
     return pd.Series(np.array([np.around(np.mean(xs),round),
+                               np.around(np.std(xs),round),
                                np.around(np.percentile(xs,02.5),round),
                                np.around(np.percentile(xs,97.5),round),
                                np.around(p_value(xs),round),
                                sig_indicator(p_value(xs))]),
-                     index=['mean','lower','upper','p_value','sig'],
+                     index=['mean','SE','lower','upper','p_value','sig'],
                      name='stats')
 
 
