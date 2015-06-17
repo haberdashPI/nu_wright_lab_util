@@ -5,6 +5,7 @@ import pickle
 import pystan
 import numpy as np
 import patsy
+from misc import unique_rows
 
 
 def read_formula(store,key,error_if_absent=True):
