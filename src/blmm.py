@@ -54,15 +54,6 @@ def dmatrices(df,extracted,eval_env=0):
     return formula,np.squeeze(y),X
 
 
-def unique_rows(a):
-    order = np.lexsort(a.T)
-    a = a[order]
-    diff = np.diff(a, axis=0)
-    ui = np.ones(len(a), 'bool')
-    ui[1:] = (diff != 0).any(axis=1)
-    return a[ui]
-
-
 def _organize_group_labels(grouped):
     group_labels = np.array(grouped.grouper.labels).T
     unique_labels = unique_rows(group_labels)
