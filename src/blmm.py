@@ -1,3 +1,5 @@
+import pkgutil
+import appdirs
 import h5py
 import os.path
 import pandas as pd
@@ -95,11 +97,23 @@ def read_samples(file,*params,**kwparams):
     return samples
 
 
-def load_model(prefix):
-    model_file = prefix+".stan"
-    object_file = prefix+".o"
+def load_model(prefix,use_package_cache=False):
+    if use_package_cache:
+        cache_dir = appdirs.user_cache_dir("pylab_util","David Little")
+        object_file = os.path.join(cache_dir,prefix+".o")
+        model_code = pkgutil.get_data('pylab_util','stan/'+prefix+'.stan')
+    else:
+        model_file = prefix+".stan"
+        object_file = prefix+".o"
+
     if not os.path.isfile(object_file):
-        model = pystan.StanModel(model_file)
+        print ("WARNING: Saving cached model to "+object_file+" if you have"+
+               " trouble after upgrading pylab_util, you may need to delete "+
+               "this file.")
+        if use_package_cache:
+            model = pystan.StanModel(model_code=model_code.decode())
+        else:
+            model = pystan.StanModel(model_file)
         with open(object_file,'wb') as f: pickle.dump(model,f)
     else:
         with open(object_file,'rb') as f: model = pickle.load(f)

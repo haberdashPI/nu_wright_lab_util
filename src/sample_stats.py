@@ -26,7 +26,7 @@ def coef_table(samples,names=None,round=3):
     return data.apply(lambda xs: coef_stats(xs,round)).T
 
 
-def contrast_table(samples,names=None,round=3):
+def contrast_table(samples,names=None,round=3,correct=True):
     if names is None: data = pd.DataFrame(samples,columns=names)
     else: data = pd.DataFrame(samples,columns=names)
 
@@ -38,7 +38,32 @@ def contrast_table(samples,names=None,round=3):
             comp_data[str(columns[i])+' - '+str(columns[j])] = \
               data.iloc[:,i] - data.iloc[:,j]
 
-    return comp_data.apply(lambda xs: coef_stats(xs,round)).T
+    if correct:
+      stats = comp_data.apply(lambda xs: coef_stats(xs,round)).T
+      return mcorrect(comp_data,stats,round)
+    else:
+      return comp_data.apply(lambda xs: coef_stats(xs,round)).T
+
+
+# correct for multiple comparisons by looking at the joint
+# probability of all comparisons with a lower p-value than each
+# given comparison.
+def mcorrect(samples,stats,round=3):
+  order = np.argsort(stats.p_value)
+  final_p_vals = np.zeros(len(order))
+
+  S = samples.values[:,order]
+  signs = np.sign(np.median(S,axis=0))
+  sign_changes = S * -signs[np.newaxis,:]
+
+  for i,j in enumerate(order):
+    sign_change_freq = np.mean(np.any(sign_changes[:,:(i+1)] > 0,axis=1))
+    final_p_vals[j] = np.around(min(1.0,2*sign_change_freq),3)
+
+  stats.p_value = final_p_vals
+  stats.sig = stats.p_value.apply(sig_indicator)
+
+  return stats
 
 
 def coef_stats(xs,round=3):

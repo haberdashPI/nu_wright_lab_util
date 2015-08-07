@@ -25,7 +25,7 @@ def merge_dicts(*dict_args):
 
 
 @contextmanager
-def stdout_redirect(to=os.devnull,mode='w'):
+def stdout_redirected(to=os.devnull):
     '''
     import os
 
@@ -35,21 +35,44 @@ def stdout_redirect(to=os.devnull,mode='w'):
     '''
     fd = sys.stdout.fileno()
 
-    # assert that Python and C stdio write using the same file descriptor
-    # assert libc.fileno(ctypes.c_void_p.in_dll(libc, "stdout")) == fd == 1
+    ##### assert that Python and C stdio write using the same file descriptor
+    ####assert libc.fileno(ctypes.c_void_p.in_dll(libc, "stdout")) == fd == 1
 
     def _redirect_stdout(to):
-        sys.stdout.close()   # + implicit flush()
-        os.dup2(to.fileno(), fd)   # fd writes to 'to' file
-        sys.stdout = os.fdopen(fd, mode)   # Python writes to fd
+        sys.stdout.flush() # + implicit flush()
+        os.dup2(to.fileno(), fd) # fd writes to 'to' file
+        #sys.stdout = os.fdopen(fd, 'w') # Python writes to fd
 
     with os.fdopen(os.dup(fd), 'w') as old_stdout:
-        with open(to, mode) as file:
+        with open(to, 'w') as file:
             _redirect_stdout(to=file)
         try:
-            yield   # allow code to be run with the redirected stdout
+            yield # allow code to be run with the redirected stdout
         finally:
-            # restore stdout.
-            # buffering and flags such as
-            # CLOEXEC may be different
             _redirect_stdout(to=old_stdout)
+
+
+# class HideOutput(object):
+#     '''
+#     A context manager that block stdout for its scope, usage:
+
+#     with HideOutput():
+#         os.system('ls -l')
+#     '''
+
+#     def __init__(self, *args, **kw):
+#         sys.stdout.flush()
+#         self._origstdout = sys.stdout
+#         self._oldstdout_fno = os.dup(sys.stdout.fileno())
+#         self._devnull = os.open(os.devnull, os.O_WRONLY)
+
+#     def __enter__(self):
+#         self._newstdout = os.dup(1)
+#         os.dup2(self._devnull, 1)
+#         os.close(self._devnull)
+#         sys.stdout = os.fdopen(self._newstdout, 'w')
+
+#     def __exit__(self, exc_type, exc_val, exc_tb):
+#         sys.stdout = self._origstdout
+#         sys.stdout.flush()
+#         os.dup2(self._oldstdout_fno, 1)
