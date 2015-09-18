@@ -52,7 +52,7 @@ class BaseRegressResults(object):
     self.df = df
 
   def cache(self,cache_file):
-    if issubclass(fit,pystan.StanFit4Model):
+    if issubclass(self.fit,pystan.StanFit4Model):
       blmm.write_samples(self.fit.extract(),cache_file)
     else: blmm.write_samples(fit,cache_file)
 
@@ -172,7 +172,7 @@ class RobustLogit(BaseRegressResults):
       pr = np.random.beta(p*scale[i],(1-p)*scale[i])
       pr = (pr - r/2) / (1-r)
 
-      return y_hat - pr
+      return pr - y_hat
 
     return fn
 
@@ -228,6 +228,6 @@ class RobustLogit2(BaseRegressResults):
       pr = np.random.beta(p*scale[i],(1-p)*scale[i])
       pr = (pr - r[i]/2) / (1-r[i])
 
-      return y_hat - pr
+      return pr - y_hat
 
     return fn

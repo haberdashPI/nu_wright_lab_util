@@ -85,7 +85,7 @@ def normal_error_fn(error):
 
 def ppp(y,y_hats,error_fn,stats,N=1000):
     def test(y,y_hat,error_fn,i):
-        diffs = y_hat - y
+        diffs = y - y_hat
         fake_diffs = error_fn(y_hat,i)
 
         return pd.DataFrame([{'real': stat(diffs),'fake': stat(fake_diffs),
