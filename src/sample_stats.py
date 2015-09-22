@@ -1,3 +1,5 @@
+import scipy
+import collections
 import numpy as np
 import pandas as pd
 
@@ -82,15 +84,33 @@ def normal_error_fn(error):
         return np.random.normal(scale=error[i],size=y_hat.shape[0])
     return fn
 
+def stat_fn(name,fn):
+  return lambda x: pd.DataFrame([{'type': name, 'value': fn(x)}])
 
-def ppp(y,y_hats,error_fn,stats,N=1000):
+default_stats = [stat_fn('min',min),
+                 stat_fn('max',max),
+                 stat_fn('min95', lambda x: np.percentile(x, 02.5)),
+                 stat_fn('min68', lambda x: np.percentile(x, 34.1)),
+                 stat_fn('rms', lambda x: np.sqrt(np.mean(x**2))),
+                 stat_fn('max68', lambda x: np.percentile(x, 65.9)),
+                 stat_fn('max95', lambda x: np.percentile(x, 97.5)),
+                 stat_fn('skewness', lambda x: scipy.stats.skew(x)),
+                 stat_fn('kurtosis', lambda x: scipy.stats.kurtosis(x))]
+
+
+def ppp(y,y_hats,error_fn,stats=default_stats,N=1000):
     def test(y,y_hat,error_fn,i):
         diffs = y - y_hat
         fake_diffs = error_fn(y_hat,i)
 
-        return pd.DataFrame([{'real': stat(diffs),'fake': stat(fake_diffs),
-                              'type': name}
-                             for name, stat in stats.iteritems()])
+        results = []
+        for stat in stats:
+          real = stat(diffs)
+          fake = stat(fake_diffs)
+          results.append(pd.DataFrame({'real': real['value'],
+                                       'fake': fake['value'],
+                                       'type': real['type']}))
+        return pd.concat(results)
 
     if N is None:
         return pd.concat([test(y,y_hats[i,:],error_fn,i)

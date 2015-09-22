@@ -13,18 +13,6 @@ linear_model = blmm.load_model('linear',use_package_cache=True)
 robit_model = blmm.load_model('robit',use_package_cache=True)
 robit2_model = blmm.load_model('robit2',use_package_cache=True)
 
-default_stats = collections.OrderedDict()
-default_stats['min'] = min
-default_stats['min95'] = lambda x: np.percentile(x, 02.5)
-default_stats['min68'] = lambda x: np.percentile(x, 34.1)
-default_stats['rms'] = lambda x: np.sqrt(np.mean(x**2))
-default_stats['max68'] = lambda x: np.percentile(x, 65.9)
-default_stats['max95'] = lambda x: np.percentile(x, 97.5)
-default_stats['max'] = max
-default_stats['skewness'] = lambda x: scipy.stats.skew(x)
-default_stats['kurtosis'] = lambda x: scipy.stats.kurtosis(x)
-
-
 def linear(formula,df,coef_prior=10,error_prior=100,cache_file=None,
            **sample_kws):
   y,A = patsy.dmatrices(formula,df,return_type='dataframe',eval_env=1)
