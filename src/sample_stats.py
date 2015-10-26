@@ -80,44 +80,42 @@ def coef_stats(xs,round=3):
 
 
 def normal_error_fn(error):
-    def fn(y_hat,i):
-        return np.random.normal(scale=error[i],size=y_hat.shape[0])
+    def fn(y_hat,indices):
+        return np.random.normal(scale=error[indices,np.newaxis],
+                                size=(len(indices),y_hat.shape[1]))
     return fn
 
+
 def stat_fn(name,fn):
-  return lambda x: pd.DataFrame([{'type': name, 'value': fn(x)}])
+  return lambda x,a: pd.DataFrame({'type': name, 'value': fn(x,a)})
 
-default_stats = [stat_fn('min',min),
-                 stat_fn('max',max),
-                 stat_fn('min95', lambda x: np.percentile(x, 02.5)),
-                 stat_fn('min68', lambda x: np.percentile(x, 34.1)),
-                 stat_fn('rms', lambda x: np.sqrt(np.mean(x**2))),
-                 stat_fn('max68', lambda x: np.percentile(x, 65.9)),
-                 stat_fn('max95', lambda x: np.percentile(x, 97.5)),
-                 stat_fn('skewness', lambda x: scipy.stats.skew(x)),
-                 stat_fn('kurtosis', lambda x: scipy.stats.kurtosis(x))]
+default_stats = [stat_fn('min',lambda x,a: np.min(x,axis=a)),
+                 stat_fn('max',lambda x,a: np.max(x,axis=a)),
+                 stat_fn('min95', lambda x,a: np.percentile(x, 02.5,axis=a)),
+                 stat_fn('min68', lambda x,a: np.percentile(x, 34.1,axis=a)),
+                 stat_fn('rms', lambda x,a: np.sqrt(np.mean(x**2,axis=a))),
+                 stat_fn('max68', lambda x,a: np.percentile(x, 65.9,axis=a)),
+                 stat_fn('max95', lambda x,a: np.percentile(x, 97.5,axis=a)),
+                 stat_fn('skewness', lambda x,a: scipy.stats.skew(x,axis=a)),
+                 stat_fn('kurtosis', lambda x,a: scipy.stats.kurtosis(x,axis=a))]
 
 
-def ppp(y,y_hats,error_fn,stats=default_stats,N=1000):
-    def test(y,y_hat,error_fn,i):
-        diffs = y - y_hat
-        fake_diffs = error_fn(y_hat,i)
+def ppp(y,y_hat,error_fn,stats=default_stats,N=1000):
+  if N is None:
+    indices = np.arange(y_hat.shape[0])
+  else:
+    indices = np.random.randint(y_hat.shape[0],size=N)
 
-        results = []
-        for stat in stats:
-          real = stat(diffs)
-          fake = stat(fake_diffs)
-          results.append(pd.DataFrame({'real': real['value'],
-                                       'fake': fake['value'],
-                                       'type': real['type']}))
-        return pd.concat(results)
+  diffs = y[np.newaxis,:]-y_hat[indices,:]
+  fake_diffs = error_fn(y_hat,indices)
 
-    if N is None:
-        return pd.concat([test(y,y_hats[i,:],error_fn,i)
-                          for i in range(y_hats.shape[0])])
-    else:
-        samples = np.random.randint(y_hats.shape[0],size=N)
-        return pd.concat([test(y,y_hats[i,:],error_fn,i) for i in samples])
+  results = []
+  for stat in stats:
+    real = stat(diffs,1)
+    fake = stat(fake_diffs,1)
+    results.append(pd.DataFrame({'real': real.value, 'fake': fake.value,
+                                 'type': real.type}))
+  return pd.concat(results)
 
 
 def bootstrap_samples(stat_fn,bootstrap=1000):

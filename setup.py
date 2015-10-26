@@ -2,7 +2,7 @@ from distutils.core import setup
 import pickle, os, datetime
 
 
-setup(name='pylab_util',version='0.0.3',author='David Little',
+setup(name='pylab_util',version='0.0.4',author='David Little',
       packages=['pylab_util'],
       package_dir={'pylab_util': 'src'},
       package_data={'pylab_util': ['stan/*.stan']},
