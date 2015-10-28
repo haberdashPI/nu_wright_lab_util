@@ -105,8 +105,11 @@ class Linear(BaseRegressResults):
 
   def error_fn(self):
     error = self.fit['eps']
-    def fn(y_hat,i,error=error):
-        return np.random.normal(scale=error[i],size=y_hat.shape[0])
+
+    def fn(y_hat,indices,error=error):
+      error = error[indices,np.newaxis]
+      return np.random.normal(scale=error,size=(error.shape[0],y_hat.shape[1]))
+
     return fn
 
 
@@ -155,9 +158,12 @@ class RobustLogit(BaseRegressResults):
     scale = self.fit['scale']
     r = self.r
 
-    def fn(y_hat,i,scale=scale,r=r):
+    def fn(y_hat,indices,scale=scale,r=r):
+      y_hat = y_hat[indices,:]
+      scale = scale[indices,np.newaxis]
+
       p = r/2 + y_hat*(1-r)
-      pr = np.random.beta(p*scale[i],(1-p)*scale[i])
+      pr = np.random.beta(p*scale,(1-p)*scale)
       pr = (pr - r/2) / (1-r)
 
       return pr - y_hat
@@ -207,14 +213,14 @@ class RobustLogit2(BaseRegressResults):
 
     return scipy.stats.beta.logpdf(r/2 + y*(1-r),p*scale,(1-p)*scale)
 
-  def error_fn(self):
-    scale = self.fit['scale']
-    r = self.fit['r']
+    def fn(y_hat,indices,scale=scale,r=r):
+      y_hat = y_hat[indices,:]
+      scale = scale[indices,np.newaxis]
+      r = r[indices,np.newaxis]
 
-    def fn(y_hat,i,scale=scale,r=r):
-      p = r[i]/2 + y_hat*(1-r[i])
+      p = r/2 + y_hat*(1-r)
       pr = np.random.beta(p*scale[i],(1-p)*scale[i])
-      pr = (pr - r[i]/2) / (1-r[i])
+      pr = (pr - r/2) / (1-r)
 
       return pr - y_hat
 
