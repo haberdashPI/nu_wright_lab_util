@@ -2,7 +2,7 @@ import scipy
 import collections
 import numpy as np
 import pandas as pd
-
+from pymc.utils import hpd
 
 def p_value(xs):
     xs = xs[~np.isnan(xs)]
@@ -22,13 +22,13 @@ def sig_indicator(p_val):
         return '   '
 
 
-def coef_table(samples,names=None,round=3):
+def coef_table(samples,names=None,round=3,alpha=0.318):  # 0.318 = 1 SEM
     if names is None: data = pd.DataFrame(samples,columns=names)
     else: data = pd.DataFrame(samples,columns=names)
-    return data.apply(lambda xs: coef_stats(xs,round)).T
+    return data.apply(lambda xs: coef_stats(xs,round,alpha)).T
 
 
-def contrast_table(samples,names=None,round=3,correct=True):
+def contrast_table(samples,names=None,round=3,correct=True,alpha=0.05):
     if names is None: data = pd.DataFrame(samples,columns=names)
     else: data = pd.DataFrame(samples,columns=names)
 
@@ -41,10 +41,10 @@ def contrast_table(samples,names=None,round=3,correct=True):
               data.iloc[:,i] - data.iloc[:,j]
 
     if correct:
-      stats = comp_data.apply(lambda xs: coef_stats(xs,round)).T
+      stats = comp_data.apply(lambda xs: coef_stats(xs,round,alpha)).T
       return mcorrect(comp_data,stats,round)
     else:
-      return comp_data.apply(lambda xs: coef_stats(xs,round)).T
+      return comp_data.apply(lambda xs: coef_stats(xs,round,alpha)).T
 
 
 # correct for multiple comparisons by looking at the joint
@@ -67,16 +67,31 @@ def mcorrect(samples,stats,round=3):
 
   return stats
 
+def coef_stats_ns(xs,round=3,alpha=0.318):
+  return coef_stats(xs,round,alpha,show_sig=False)
 
-def coef_stats(xs,round=3):
-    return pd.Series(np.array([np.around(np.mean(xs),round),
-                               np.around(np.std(xs),round),
-                               np.around(np.percentile(xs,02.5),round),
-                               np.around(np.percentile(xs,97.5),round),
-                               np.around(p_value(xs),round),
-                               sig_indicator(p_value(xs))]),
-                     index=['mean','SE','lower','upper','p_value','sig'],
-                     name='stats')
+def coef_stats(xs,round=3,alpha=0.318,show_sig=True):  # 0.318 = 1 SEM
+    lower, upper = np.around(hpd(xs,alpha),round)
+
+    if not show_sig:
+      return pd.Series(np.array([np.around(np.mean(xs),round),
+                                 np.around(np.std(xs),round),
+                                 np.around(scipy.stats.sem(xs),round),
+                                 lower,upper,
+                                 np.around(p_value(xs),round)]),
+                       index=['mean','SE','error','lower','upper','p_value'],
+                       name='stats')
+    else:
+      return pd.Series(np.array([np.around(np.mean(xs),round),
+                                 np.around(np.std(xs),round),
+                                 np.around(scipy.stats.sem(xs),round),
+                                 lower,upper,
+                                 np.around(p_value(xs),round),
+                                 sig_indicator(p_value(xs))]),
+                       index=['mean','SE','error','lower','upper','p_value','sig'],
+                       name='stats')
+
+
 
 
 def normal_error_fn(error):
@@ -97,7 +112,7 @@ default_stats = [stat_fn('min',lambda x,a: np.min(x,axis=a)),
                  stat_fn('max68', lambda x,a: np.percentile(x, 65.9,axis=a)),
                  stat_fn('max95', lambda x,a: np.percentile(x, 97.5,axis=a)),
                  stat_fn('skewness', lambda x,a: scipy.stats.skew(x,axis=a)),
-                 stat_fn('kurtosis', lambda x,a: scipy.stats.kurtosis(x,axis=a))]
+                   stat_fn('kurtosis', lambda x,a: scipy.stats.kurtosis(x,axis=a))]
 
 
 def ppp(y,y_hat,error_fn,stats=default_stats,N=1000):

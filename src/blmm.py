@@ -9,7 +9,6 @@ import numpy as np
 import patsy
 from misc import unique_rows
 
-
 def read_formula(store,key,error_if_absent=True):
     import dill
     builder = dill.loads(store.get_storer(key).attrs.formula)
@@ -97,7 +96,9 @@ def read_samples(file,*params,**kwparams):
     return samples
 
 
-def load_model(prefix,use_package_cache=False):
+def load_model(prefix,use_package_cache=False,nocache=False):
+    if nocache:
+        clear_cache(prefix,use_package_cache)
     if use_package_cache:
         cache_dir = appdirs.user_cache_dir("pylab_util","David Little")
         object_file = os.path.join(cache_dir,prefix+".o")
@@ -108,7 +109,7 @@ def load_model(prefix,use_package_cache=False):
 
     if not os.path.isfile(object_file):
         print ("WARNING: Saving cached model to "+object_file+" if you have"+
-               " trouble after upgrading pylab_util, you may need to delete "+
+               " trouble after changing model code, you may need to delete "+
                "this file.")
         if use_package_cache:
             model = pystan.StanModel(model_code=model_code.decode())
@@ -119,3 +120,11 @@ def load_model(prefix,use_package_cache=False):
         with open(object_file,'rb') as f: model = pickle.load(f)
 
     return model
+
+
+def clear_cache(prefix,use_package_cache=False):
+    if use_package_cache:
+        cache_dir = appdirs.user_cache_dir("pylab_util","David Little")
+        os.remove(os.path.join(cache_dir,prefix+".o"))
+    else:
+        os.remove(os.path.join(prefix+".o"))

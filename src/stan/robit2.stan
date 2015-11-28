@@ -1,6 +1,6 @@
 data{
   int<lower=1> n; // number of observations
-  int<lower=1> k; // number of predictors
+  int<lower=0> k; // number of predictors
   real y[n]; // outcomes
   matrix[n,k] A; // predictiors
   real prediction_error_prior;

@@ -1,4 +1,3 @@
-import collections
 import os
 import patsy
 import pandas as pd
@@ -12,6 +11,7 @@ from sample_stats import *
 linear_model = blmm.load_model('linear',use_package_cache=True)
 robit_model = blmm.load_model('robit',use_package_cache=True)
 robit2_model = blmm.load_model('robit2',use_package_cache=True)
+
 
 def linear(formula,df,coef_prior=10,error_prior=100,cache_file=None,
            **sample_kws):
@@ -50,6 +50,11 @@ class BaseRegressResults(object):
     else:
       return coef_table(self.fit['alpha'][:,coefs],self.A.columns[coefs])
 
+  def R2(self):
+    R2 = (1-np.divide(np.sum((self.y[:,np.newaxis] - self.predict())**2,axis=0),
+                      np.sum((self.y - self.y.mean())**2))[:,np.newaxis])
+    return R2
+
   def contrasts(self,coefs=None,correct=True):
     if coefs is None:
       return contrast_table(self.fit['alpha'],self.A.columns,correct=correct)
@@ -57,11 +62,22 @@ class BaseRegressResults(object):
       return contrast_table(self.fit['alpha'][:,coefs],self.A.columns[coefs],
                             correct=correct)
 
-  def predict(self,df=None):
-    if df is None: return self._predict_helper(self.A)
-    else:
+  def predict(self,df=None,use_dataframe=False):
+    if df is None:
+      Y = self._predict_helper(self.A)
+      df = self.df
+    if df is not None:
       A = patsy.dmatrix(self.A.design_info,df)
-      return self._predict_helper(A)
+      Y = self._predict_helper(A)
+
+    if use_dataframe:
+      dfp = df.copy()
+      dfp = dfp.iloc[np.repeat(np.arange(Y.shape[0]),Y.shape[1]),:]
+      dfp['sample'] = np.tile(np.arange(Y.shape[1]),Y.shape[0])
+      dfp['y'] = np.reshape(Y,Y.shape[0]*Y.shape[1])
+      return dfp
+    else:
+      return Y
 
   def linear_tests(self,names,X,coefs=None,rhs=0,correct=True):
     if coefs is None: coefs = slice(0,self.fit['alpha'].shape[1])
@@ -72,12 +88,14 @@ class BaseRegressResults(object):
     else:
       return table
 
-  def validate(self,stats=default_stats):
+  def validate(self,stats=default_stats,N=1000):
     p = self.predict()
-    tests = ppp(self.y,p.T,self.error_fn(),stats)
+    tests = ppp(self.y,p.T,self.error_fn(),stats,N=N)
 
     g = tests.groupby('type')
     summary = g.mean()
+    summary['fakeSE'] = g.fake.std()
+    summary['realSE'] = g.real.std()
     summary['p_val'] = g.apply(lambda d: p_value(d.real - d.fake))
     return summary
 
@@ -93,7 +111,10 @@ class BaseRegressResults(object):
 
 class Linear(BaseRegressResults):
   def _predict_helper(self,A):
-    p = np.einsum('ij,kj->ik',A,self.fit['alpha'])
+    if len(self.fit['alpha'].shape) == 1:
+      p = np.einsum('ij,kj->ik',A,self.fit['alpha'][:,np.newaxis])
+    else:
+      p = np.einsum('ij,kj->ik',A,self.fit['alpha'])
     return p
 
   def log_posterior(self,y):
@@ -139,7 +160,10 @@ class RobustLogit(BaseRegressResults):
     self.r = r
 
   def _predict_helper(self,A):
-    p = np.einsum('ij,kj->ik',A,self.fit['alpha'])
+    if len(self.fit['alpha'].shape) == 1:
+      p = np.einsum('ij,kj->ik',A,self.fit['alpha'][:,np.newaxis])
+    else:
+      p = np.einsum('ij,kj->ik',A,self.fit['alpha'])
     p = 1 / (1 + np.exp(-p))
     p = (p - self.r/2) / (1-self.r)
 
@@ -197,12 +221,32 @@ class RobustLogit2(BaseRegressResults):
     super(RobustLogit2,self).__init__(*params)
 
   def _predict_helper(self,A):
-    p = np.einsum('ij,kj->ik',A,self.fit['alpha'])
+    if len(self.fit['alpha'].shape) == 1:
+      p = np.einsum('ij,kj->ik',A,self.fit['alpha'][:,np.newaxis])
+    else:
+      p = np.einsum('ij,kj->ik',A,self.fit['alpha'])
     r = self.fit['r']
     p = 1 / (1 + np.exp(-p))
     p = (p - r/2) / (1-r)
 
     return p
+
+  def error_fn(self):
+    scale = self.fit['scale']
+    r = self.fit['r']
+
+    def fn(y_hat,indices,scale=scale,r=r):
+      y_hat = y_hat[indices,:]
+      scale = scale[indices,np.newaxis]
+      r = r[indices,np.newaxis]
+
+      p = r/2 + y_hat*(1-r)
+      pr = np.random.beta(p*scale,(1-p)*scale)
+      pr = (pr - r/2) / (1-r)
+
+      return pr - y_hat
+
+    return fn
 
   def log_posterior(self,y):
     scale = self.fit['scale'][np.newaxis,:]
