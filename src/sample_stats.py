@@ -1,12 +1,12 @@
 import scipy
-import collections
 import numpy as np
 import pandas as pd
 from pymc.utils import hpd
 
-def p_value(xs):
-    xs = xs[~np.isnan(xs)]
-    return min(1.0,2*np.mean(np.sign(xs) != np.sign(np.median(xs))))
+
+def p_value(xs,axis=None):
+  diffs = np.sign(xs) != np.sign(np.nanmedian(xs,axis=axis))
+  return np.minimum(1.0,2*np.mean(diffs,axis=axis))
 
 
 def sig_indicator(p_val):
@@ -22,10 +22,14 @@ def sig_indicator(p_val):
         return '   '
 
 
-def coef_table(samples,names=None,round=3,alpha=0.318):  # 0.318 = 1 SEM
+def coef_table(samples,names=None,round=3,alpha=0.318,sig=True):  # 0.318 = 1 SEM
     if names is None: data = pd.DataFrame(samples,columns=names)
     else: data = pd.DataFrame(samples,columns=names)
-    return data.apply(lambda xs: coef_stats(xs,round,alpha)).T
+
+    if sig:
+      return data.apply(lambda xs: coef_stats(xs,round,alpha)).T
+    else:
+      return data.apply(lambda xs: coef_stats_ns(xs,round,alpha)).T
 
 
 def contrast_table(samples,names=None,round=3,correct=True,alpha=0.05):
@@ -51,6 +55,9 @@ def contrast_table(samples,names=None,round=3,correct=True,alpha=0.05):
 # probability of all comparisons with a lower p-value than each
 # given comparison.
 def mcorrect(samples,stats,round=3):
+  if stats.shape[1] <= 2:
+    return stats
+   
   order = np.argsort(stats.p_value)
   final_p_vals = np.zeros(len(order))
 
@@ -67,8 +74,10 @@ def mcorrect(samples,stats,round=3):
 
   return stats
 
+
 def coef_stats_ns(xs,round=3,alpha=0.318):
   return coef_stats(xs,round,alpha,show_sig=False)
+
 
 def coef_stats(xs,round=3,alpha=0.318,show_sig=True):  # 0.318 = 1 SEM
     lower, upper = np.around(hpd(xs,alpha),round)
@@ -108,12 +117,22 @@ default_stats = [stat_fn('min',lambda x,a: np.min(x,axis=a)),
                  stat_fn('max',lambda x,a: np.max(x,axis=a)),
                  stat_fn('min95', lambda x,a: np.percentile(x, 02.5,axis=a)),
                  stat_fn('min68', lambda x,a: np.percentile(x, 34.1,axis=a)),
+                 stat_fn('median', lambda x,a: np.percentile(x,50,axis=a)),
                  stat_fn('rms', lambda x,a: np.sqrt(np.mean(x**2,axis=a))),
                  stat_fn('max68', lambda x,a: np.percentile(x, 65.9,axis=a)),
                  stat_fn('max95', lambda x,a: np.percentile(x, 97.5,axis=a)),
                  stat_fn('skewness', lambda x,a: scipy.stats.skew(x,axis=a)),
                    stat_fn('kurtosis', lambda x,a: scipy.stats.kurtosis(x,axis=a))]
 
+
+def ppp_T(T_real,T_fake,stats):
+  results = []
+  for stat in stats:
+    real = stat(T_real,1)
+    fake = stat(T_fake,1)
+    results.append(pd.DataFrame({'real': real.value, 'fake': fake.value,
+                                 'type': real.type}))
+  return pd.concat(results)
 
 def ppp(y,y_hat,error_fn,stats=default_stats,N=1000):
   if N is None:
@@ -124,14 +143,7 @@ def ppp(y,y_hat,error_fn,stats=default_stats,N=1000):
   diffs = y[np.newaxis,:]-y_hat[indices,:]
   fake_diffs = error_fn(y_hat,indices)
 
-  results = []
-  for stat in stats:
-    real = stat(diffs,1)
-    fake = stat(fake_diffs,1)
-    results.append(pd.DataFrame({'real': real.value, 'fake': fake.value,
-                                 'type': real.type}))
-  return pd.concat(results)
-
+  return ppp_T(diffs,fake_diffs,stats)
 
 def bootstrap_samples(stat_fn,bootstrap=1000):
     if isinstance(bootstrap,(np.ndarray,np.matrix)):
