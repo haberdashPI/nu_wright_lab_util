@@ -106,7 +106,7 @@ class BaseRegressResults(object):
 
     waic = -2*np.sum(lpd - p_waic)
     sd = 2*np.sqrt(lpd.shape[0] * np.std(lpd - p_waic))
-    return waic,sd,np.sum(p_waic)
+    return waic,sd,np.mean(p_waic)
 
 
 class Linear(BaseRegressResults):
