@@ -103,6 +103,8 @@ def load_model(prefix,use_package_cache=False,nocache=False):
         cache_dir = appdirs.user_cache_dir("pylab_util","David Little")
         object_file = os.path.join(cache_dir,prefix+".o")
         model_code = pkgutil.get_data('pylab_util','stan/'+prefix+'.stan')
+        if not os.path.exists(cache_dir):
+            os.makedirs(cache_dir)
     else:
         model_file = prefix+".stan"
         object_file = prefix+".o"
