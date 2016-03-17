@@ -55,7 +55,7 @@ def contrast_table(samples,names=None,round=3,correct=True,alpha=0.05):
 # probability of all comparisons with a lower p-value than each
 # given comparison.
 def mcorrect(samples,stats,round=3):
-  if stats.shape[1] <= 2:
+  if samples.shape[1] < 2:
     return stats
    
   order = np.argsort(stats.p_value)
