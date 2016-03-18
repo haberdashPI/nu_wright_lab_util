@@ -91,7 +91,7 @@ model {
   alpha ~ normal(0,fixed_mean_prior);
 
   // distribution of outcomes
-  sigma ~ cauchy(0,prediction_error_prior);
+  sigma ~ normal(0,prediction_error_prior);
   for(i in 1:n){
     real y_hat;
     y_hat <- A[i]*alpha + B_1[i]*beta_1[gg_1[i]]' + B_2[i]*beta_2[gg_2[i]]' + 

@@ -9,11 +9,15 @@ model2 = blmm.load_model('lmm2',use_package_cache=True)
 model3 = blmm.load_model('lmm3',use_package_cache=True)
 model4 = blmm.load_model('lmm4',use_package_cache=True)
 
-def lmm(mean_formula,df,groups,eps_prior=1,fixed_prior=1):
+def lmm(mean_formula,df,groups,eps_prior=1,fixed_prior=1,noy=False):
   #assert (len(groups) == 1) and (len(groups) <= 3)
   assert (len(groups) in range(1,5))
 
-  y,A = patsy.dmatrices(mean_formula,df,return_type='dataframe')
+  if not noy:
+    y,A = patsy.dmatrices(mean_formula,df,return_type='dataframe')
+  else:
+    A = patsy.dmatrix(mean_formula.split('~')[1],df,return_type='dataframe')
+    y = None
 
   gdf_1,gg_1,group_keys_1 = blmm.setup_groups(df,groups[0]['grouping'])
   B_1 = patsy.dmatrix(groups[0]['formula'],df,return_type='dataframe')
@@ -75,7 +79,7 @@ class LmmModel(object):
   def predict(self,df=None,marginalize=[],randomize=[],use_dataframe=False):
     if df is not None:
       df = df.copy()
-      newmodel = lmm(self.mean_formula,df,self.groups)
+      newmodel = lmm(self.mean_formula,df,self.groups,noy=True)
       A = newmodel.A
       B = newmodel.B
       G = newmodel.G
@@ -87,7 +91,12 @@ class LmmModel(object):
       G = self.G
       gg = self.gg
 
-    y_hat = np.einsum('ij,kj->ik', A,self.fit['alpha'][:, np.newaxis])
+    if self.A.shape[1] > 1:
+      y_hat = np.einsum('ij,kj->ik', A,self.fit['alpha'])
+    elif self.A.shape[1] == 1:
+      y_hat = np.einsum('ij,kj->ik', A,self.fit['alpha'][:, np.newaxis])
+    else:
+      y_hat = 0
 
     if 0 in marginalize:
       y_hat += (np.einsum('ik,jlk->ij', B[0],self.fit['beta_1']) /
@@ -149,15 +158,13 @@ class LmmModel(object):
 
     return y_hat[:,samples]
 
-  def validate(self,groupby,stats=default_stats,N=500):
+  def validate(self,stats=default_stats,N=500,randomize=[]):
     samples = np.random.choice(self.fit['beta_1'].shape[0],size=N,replace=False)
-    y_hat = self.predict(df,randomize=randomize)
+    y_hat = self.predict(self.df,randomize=randomize)
 
-    ystr = self.y.name
-
-    real_diff = realdf[ystr][:,np.newaxis] - y_hat[:,samples]
-    fake_diff = np.normal.random(0,self.fit['sigma'][np.newaxis,samples],
-                                 size=(realdf.shape[0],len(samples)))
+    real_diff = self.y[:,np.newaxis] - y_hat[:,samples]
+    fake_diff = np.random.normal(0,self.fit['sigma'][np.newaxis,samples],
+                                 size=(self.df.shape[0],len(samples)))
 
     tests = ppp_T(real_diff,fake_diff,stats)
 
