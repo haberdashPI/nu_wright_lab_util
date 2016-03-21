@@ -13,18 +13,18 @@ data {
 
   int<lower=1> l_1; // num type 1 group predictors
   
-  int<lower=1,upper=g_1> gg_1[n];  // group for individual
-  int<lower=1,upper=g_2> gg_2[n];  // group for individual
-  int<lower=1,upper=g_3> gg_3[n];  // group for individual
-  int<lower=1,upper=g_4> gg_4[n];  // group for individual    
+  int<lower=1,upper=g_1> gg_1[n];  // group type 1 for individual
+  int<lower=1,upper=g_2> gg_2[n];  // group type 2 for individual
+  int<lower=1,upper=g_3> gg_3[n];  // group type 3 for individual
+  int<lower=1,upper=g_4> gg_4[n];  // group type 4 for individual    
   matrix[n,k] A; // fixed predictors
   matrix[n,h_1] B_1; // individual predictors type 1
   matrix[n,h_2] B_2; // individual predictors type 2
   matrix[n,h_3] B_3; // individual predictors type 2
-  matrix[n,h_4] B_4; // individual predictors type 2    
+  matrix[n,h_4] B_4; // individual predictors type 2
   matrix[g_1,l_1] G_1; // type 1 group predictors
 
-  int y[n]; // outcomes
+  real y[n]; // outcomes
 
   real fixed_mean_prior;
 

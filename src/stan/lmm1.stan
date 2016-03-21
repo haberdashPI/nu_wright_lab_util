@@ -12,7 +12,7 @@ data {
   matrix[n,h_1] B_1; // individual predictors type 1
   matrix[g_1,l_1] G_1; // type 1 group predictors
 
-  int y[n]; // outcomes
+  real y[n]; // outcomes
 
   real fixed_mean_prior;
 
