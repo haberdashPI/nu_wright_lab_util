@@ -42,7 +42,7 @@ def lmm(mean_formula,df,groups,eps_prior=1,fixed_prior=1,noy=False):
     gdf_3,gg_3,group_keys_3 = blmm.setup_groups(df,groups[2]['grouping'])
     B_3 = patsy.dmatrix(groups[2]['formula'],df,return_type='dataframe')
     if len(groups) == 3:
-      model = LmmModel(df,deltavar,countvar,scaleg_var,mean_formula,groups,
+      model = LmmModel(df,mean_formula,groups,
                        y,A,[gdf_1,gdf_2,gdf_3],[gg_1,gg_2,gg_3],
                        [group_keys_1,group_keys_2,group_keys_3],
                        [B_1,B_2,B_3],G_1,eps_prior,fixed_prior)
@@ -196,7 +196,7 @@ class LmmModel(object):
     return waic,sd,np.sum(p_waic)
 
   def sample(self,mean_init=0,iters=5,warmup=2,chains=1):
-    model_input = {"y": self.y.astype('int64'),
+    model_input = {"y": self.y,
                    "A": self.A, "n": len(self.y),
                    "k": self.A.shape[1],
                    "B_1": self.B[0].ix[self.A.index],
