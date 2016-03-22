@@ -6,10 +6,11 @@ from pylab_util.sample_stats import *
 
 model1 = blmm.load_model('lmm1',use_package_cache=True)
 model2 = blmm.load_model('lmm2',use_package_cache=True)
+rmodel2 = blmm.load_model('rlmm2',use_package_cache=True)
 model3 = blmm.load_model('lmm3',use_package_cache=True)
 model4 = blmm.load_model('lmm4',use_package_cache=True)
 
-def lmm(mean_formula,df,groups,eps_prior=1,fixed_prior=1,noy=False):
+def lmm(mean_formula,df,groups,eps_prior=1,fixed_prior=1,noy=False,robust=False):
   #assert (len(groups) == 1) and (len(groups) <= 3)
   assert (len(groups) in range(1,5))
 
@@ -24,7 +25,7 @@ def lmm(mean_formula,df,groups,eps_prior=1,fixed_prior=1,noy=False):
   G_1 = patsy.dmatrix(groups[0]['group_formula'],gdf_1,return_type='dataframe')
 
   if len(groups) == 1:
-      model = LmmModel(df,mean_formula,groups,
+      model = LmmModel(df,mean_formula,groups,robust,
                        y,A,[gdf_1],[gg_1],[group_keys_1],[B_1],G_1,
                        eps_prior,fixed_prior)
 
@@ -33,7 +34,7 @@ def lmm(mean_formula,df,groups,eps_prior=1,fixed_prior=1,noy=False):
     B_2 = patsy.dmatrix(groups[1]['formula'],df,return_type='dataframe')
 
     if len(groups) == 2:
-      model = LmmModel(df,mean_formula,groups,
+      model = LmmModel(df,mean_formula,groups,robust,
                        y,A,[gdf_1,gdf_2],[gg_1,gg_2],
                        [group_keys_1,group_keys_2],[B_1,B_2],G_1,
                        eps_prior,fixed_prior)
@@ -42,7 +43,7 @@ def lmm(mean_formula,df,groups,eps_prior=1,fixed_prior=1,noy=False):
     gdf_3,gg_3,group_keys_3 = blmm.setup_groups(df,groups[2]['grouping'])
     B_3 = patsy.dmatrix(groups[2]['formula'],df,return_type='dataframe')
     if len(groups) == 3:
-      model = LmmModel(df,mean_formula,groups,
+      model = LmmModel(df,mean_formula,groups,robust,
                        y,A,[gdf_1,gdf_2,gdf_3],[gg_1,gg_2,gg_3],
                        [group_keys_1,group_keys_2,group_keys_3],
                        [B_1,B_2,B_3],G_1,eps_prior,fixed_prior)
@@ -50,17 +51,17 @@ def lmm(mean_formula,df,groups,eps_prior=1,fixed_prior=1,noy=False):
   if len(groups) == 4:
     gdf_4,gg_4,group_keys_4 = blmm.setup_groups(df,groups[3]['grouping'])
     B_4 = patsy.dmatrix(groups[3]['formula'],df,return_type='dataframe')
-    model = PsychoModel(df,mean_formula,groups,
-                        y,A,[gdf_1,gdf_2,gdf_3,gdf_4],[gg_1,gg_2,gg_3,gg_4],
-                        [group_keys_1,group_keys_2,group_keys_3,group_keys_4],
-                        [B_1,B_2,B_3,B_4],G_1,eps_prior,fixed_prior)
+    model = LmmModel(df,mean_formula,groups,robust,
+                     y,A,[gdf_1,gdf_2,gdf_3,gdf_4],[gg_1,gg_2,gg_3,gg_4],
+                     [group_keys_1,group_keys_2,group_keys_3,group_keys_4],
+                     [B_1,B_2,B_3,B_4],G_1,eps_prior,fixed_prior)
 
   return model
 
 
 
 class LmmModel(object):
-  def __init__(self,df,mean_formula,groups,y,A,gdf,gg,
+  def __init__(self,df,mean_formula,groups,robust,y,A,gdf,gg,
                group_keys,B,G,eps_prior,fixed_prior):
     self.fit = None
     self.mean_formula = mean_formula
@@ -75,6 +76,7 @@ class LmmModel(object):
     self.G = G
     self.eps_prior = eps_prior
     self.fixed_prior = fixed_prior
+    self.robust = robust
 
   def predict(self,df=None,marginalize=[],randomize=[],use_dataframe=False):
     if df is not None:
@@ -158,13 +160,18 @@ class LmmModel(object):
 
     return y_hat[:,samples]
 
-  def validate(self,stats=default_stats,N=500,randomize=[]):
+  def validate(self,stats=default_stats,N=500,randomize=[],return_samples=False):
     samples = np.random.choice(self.fit['beta_1'].shape[0],size=N,replace=False)
     y_hat = self.predict(self.df,randomize=randomize)
 
     real_diff = self.y[:,np.newaxis] - y_hat[:,samples]
-    fake_diff = np.random.normal(0,self.fit['sigma'][np.newaxis,samples],
-                                 size=(self.df.shape[0],len(samples)))
+    if not self.robsut:
+      fake_diff = np.random.normal(0,self.fit['sigma'][np.newaxis,samples],
+                                   size=(self.df.shape[0],len(samples)))
+    else:
+      cauchy = np.random.standard_cauchy
+      fake_diff = (cauchy(size=(self.df.shape[0],len(samples))) *
+                   self.fit['sigma'][np.newaxis,samples])
 
     tests = ppp_T(real_diff,fake_diff,stats)
 
@@ -173,7 +180,10 @@ class LmmModel(object):
     summary['p_val'] = g.apply(lambda d: p_value(d.real - d.fake))
     summary['fakeSE'] = g.fake.std()
     summary['realSE'] = g.real.std()
-    return summary
+    if not return_samples:
+      return summary
+    else:
+      return tests
 
   def log_posterior(self,y=None,df=None):
     if df is None:
@@ -182,7 +192,10 @@ class LmmModel(object):
 
     y_hat = self.predict(df)
     y = y[:,np.newaxis]
-    lp = scipy.stats.normal(y[:,np.newaxis],y_hat,self.fit['sigma'][np.newaxis,:])
+    if not self.robust:
+      lp = scipy.stats.normal(y[:,np.newaxis],y_hat,self.fit['sigma'][np.newaxis,:])
+    else:
+      lp = scipy.stats.cauchy.pdf(y[:,np.newaxis],y_hat,self.fit['sigma'][np.newaxis,:])
 
     return lp
 
@@ -279,8 +292,12 @@ class LmmModel(object):
       fit = model1.sampling(data=model_input,init=init_fn,iter=iters,
                             chains=chains,warmup=warmup)
     if len(self.groups) == 2:
-      fit = model2.sampling(data=model_input,init=init_fn,iter=iters,
-                            chains=chains,warmup=warmup)
+      if not self.robust:
+        fit = model2.sampling(data=model_input,init=init_fn,iter=iters,
+                              chains=chains,warmup=warmup)
+      else:
+        fit = rmodel2.sampling(data=model_input,init=init_fn,iter=iters,
+                               chains=chains,warmup=warmup)
     if len(self.groups) == 3:
       fit = model3.sampling(data=model_input,init=init_fn,iter=iters,
                             chains=chains,warmup=warmup)
