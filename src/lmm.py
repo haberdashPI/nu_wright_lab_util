@@ -165,7 +165,7 @@ class LmmModel(object):
     y_hat = self.predict(self.df,randomize=randomize)
 
     real_diff = self.y[:,np.newaxis] - y_hat[:,samples]
-    if not self.robsut:
+    if not self.robust:
       fake_diff = np.random.normal(0,self.fit['sigma'][np.newaxis,samples],
                                    size=(self.df.shape[0],len(samples)))
     else:
@@ -289,6 +289,8 @@ class LmmModel(object):
       return model_init
 
     if len(self.groups) == 1:
+      if self.robust:
+          RuntimeError("Not implemented!")
       fit = model1.sampling(data=model_input,init=init_fn,iter=iters,
                             chains=chains,warmup=warmup)
     if len(self.groups) == 2:
@@ -299,9 +301,13 @@ class LmmModel(object):
         fit = rmodel2.sampling(data=model_input,init=init_fn,iter=iters,
                                chains=chains,warmup=warmup)
     if len(self.groups) == 3:
+      if self.robust:
+          RuntimeError("Not implemented!")
       fit = model3.sampling(data=model_input,init=init_fn,iter=iters,
                             chains=chains,warmup=warmup)
     if len(self.groups) == 4:
+      if self.robust:
+          RuntimeError("Not implemented!")
       fit = model4.sampling(data=model_input,init=init_fn,iter=iters,
                             chains=chains,warmup=warmup)
 
