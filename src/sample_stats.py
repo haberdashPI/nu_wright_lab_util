@@ -22,6 +22,10 @@ def sig_indicator(p_val):
         return '   '
 
 
+def mean_bounds(xs,alpha=0.05,):
+  lower, upper = hpd(xs,alpha)
+  return pd.Series([lower,np.median(xs),upper],index=['lower','median','upper'])
+
 def coef_table(samples,names=None,round=3,alpha=0.318,sig=True):  # 0.318 = 1 SEM
     if names is None: data = pd.DataFrame(samples,columns=names)
     else: data = pd.DataFrame(samples,columns=names)
