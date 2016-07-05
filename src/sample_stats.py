@@ -22,7 +22,7 @@ def sig_indicator(p_val):
         return '   '
 
 
-def mean_bounds(xs,alpha=0.05,):
+def mean_bounds(xs,alpha=0.05):
   lower, upper = hpd(xs,alpha)
   return pd.Series([lower,np.median(xs),upper],index=['lower','median','upper'])
 
@@ -61,7 +61,7 @@ def contrast_table(samples,names=None,round=3,correct=True,alpha=0.05):
 def mcorrect(samples,stats,round=3):
   if samples.shape[1] < 2:
     return stats
-   
+
   order = np.argsort(stats.p_value)
   final_p_vals = np.zeros(len(order))
 
@@ -134,7 +134,8 @@ def ppp_T(T_real,T_fake,stats):
   for stat in stats:
     real = stat(T_real,1)
     fake = stat(T_fake,1)
-    results.append(pd.DataFrame({'real': real.value, 'fake': fake.value,
+    results.append(pd.DataFrame({'real': real.value,
+                                 'fake': fake.value,
                                  'type': real.type}))
   return pd.concat(results)
 
