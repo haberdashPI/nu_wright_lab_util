@@ -10,15 +10,40 @@ rmodel2 = blmm.load_model('rlmm2',use_package_cache=True)
 model3 = blmm.load_model('lmm3',use_package_cache=True)
 model4 = blmm.load_model('lmm4',use_package_cache=True)
 
-def lmm(mean_formula,df,groups,eps_prior=1,fixed_prior=1,noy=False,robust=False):
+def dfmatrices(df,model):
+  A = patsy.dmatrix(model.A.design_info,df,return_type='dataframe')
+
+  gdf_1,gg_1,group_keys_1 = blmm.setup_groups(df,model.groups[0]['grouping'])
+  B_1 = patsy.dmatrix(model.B[0].design_info,df,return_type='dataframe')
+  G_1 = patsy.dmatrix(model.G.design_info,gdf_1,return_type='dataframe')
+
+  if len(model.groups) == 1:
+    return A,[B_1],G_1,[gg_1]
+
+  if len(model.groups) >= 2:
+    gdf_2,gg_2,group_keys_2 = blmm.setup_groups(df,model.groups[1]['grouping'])
+    B_2 = patsy.dmatrix(model.B[2].design_info,df,return_type='dataframe')
+
+    return A,[B_1,B_2],G_1,[gg_1,gg_2]
+
+  if len(model.groups) >= 3:
+    gdf_3,gg_3,group_keys_3 = blmm.setup_groups(df,model.groups[2]['grouping'])
+    B_3 = patsy.dmatrix(model.B[3].design_info,df,return_type='dataframe')
+
+    return A,[B_1,B_2,B_3],G_1,[gg_1,gg_2,gg_3]
+
+  if len(model.groups) == 4:
+    gdf_4,gg_4,group_keys_4 = blmm.setup_groups(df,model.groups[3]['grouping'])
+    B_4 = patsy.dmatrix(model.B[4].design_info,df,return_type='dataframe')
+    return A,[B_1,B_2,B_3,B_4],G_1,[gg_1,gg_2,gg_3]
+
+  return None
+
+def lmm(mean_formula,df,groups,eps_prior=1,fixed_prior=1,robust=False):
   #assert (len(groups) == 1) and (len(groups) <= 3)
   assert (len(groups) in range(1,5))
 
-  if not noy:
-    y,A = patsy.dmatrices(mean_formula,df,return_type='dataframe')
-  else:
-    A = patsy.dmatrix(mean_formula.split('~')[1],df,return_type='dataframe')
-    y = None
+  y,A = patsy.dmatrices(mean_formula,df,return_type='dataframe')
 
   gdf_1,gg_1,group_keys_1 = blmm.setup_groups(df,groups[0]['grouping'])
   B_1 = patsy.dmatrix(groups[0]['formula'],df,return_type='dataframe')
@@ -78,14 +103,15 @@ class LmmModel(object):
     self.fixed_prior = fixed_prior
     self.robust = robust
 
-  def predict(self,df=None,marginalize=[],randomize=[],use_dataframe=False):
+  def predict(self,df=None,marginalize=[],randomize=[],meanonly=False,
+              use_dataframe=False):
     if df is not None:
       df = df.copy()
-      newmodel = lmm(self.mean_formula,df,self.groups,noy=True)
-      A = newmodel.A
-      B = newmodel.B
-      G = newmodel.G
-      gg = newmodel.gg
+      A,B,G,gg = dfmatrices(df,self)
+      if not meanonly:
+          print """WARNING: grouping implementation is naive. If you don't have
+            the same exact set of groups for the new data set, the mappings to
+            groups in the model will be wrong."""
     else:
       df = self.df
       A = self.A
@@ -103,14 +129,18 @@ class LmmModel(object):
     if 0 in marginalize:
       y_hat += (np.einsum('ik,jlk->ij', B[0],self.fit['beta_1']) /
                 self.fit['beta_1'].shape[1])
-    elif 0 in randomize:
+    elif (0 in randomize) or meanonly:
       # samples, groups, predictors
       mean_1 = np.einsum('ik,jkh->jih',G,self.fit['gamma_1'])
       # samples, groups, predictors
-      z_1 = np.random.normal(size=(mean_1.shape[1],mean_1.shape[2]))
-      cov_1 = np.einsum('ij,ijk,hj->ihj',self.fit['tau_1'],
-                        self.fit['L_Omega_1'],z_1)
-      y_hat += np.einsum('ik,jik->ij',B[0],(mean_1 + cov_1)[:,gg[0],:])
+      if not meanonly:
+        z_1 = np.random.normal(size=(mean_1.shape[1],mean_1.shape[2]))
+        cov_1 = np.einsum('ij,ijk,hj->ihj',self.fit['tau_1'],
+                          self.fit['L_Omega_1'],z_1)
+        mu = mean_1 + cov_1
+      else:
+        mu = mean_1
+      y_hat += np.einsum('ik,jik->ij',B[0],mu[:,gg[0],:])
     else:
       y_hat += np.einsum('ik,jik->ij', B[0],self.fit['beta_1'][:,gg[0],:])
 
