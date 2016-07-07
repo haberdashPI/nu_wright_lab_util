@@ -9,6 +9,7 @@ model2 = blmm.load_model('lmm2',use_package_cache=True)
 rmodel2 = blmm.load_model('rlmm2',use_package_cache=True)
 model3 = blmm.load_model('lmm3',use_package_cache=True)
 model4 = blmm.load_model('lmm4',use_package_cache=True)
+model5 = blmm.load_model('lmm5',use_package_cache=True)
 
 def dfmatrices(df,model):
   A = patsy.dmatrix(model.A.design_info,df,return_type='dataframe')
@@ -22,26 +23,36 @@ def dfmatrices(df,model):
 
   if len(model.groups) >= 2:
     gdf_2,gg_2,group_keys_2 = blmm.setup_groups(df,model.groups[1]['grouping'])
-    B_2 = patsy.dmatrix(model.B[2].design_info,df,return_type='dataframe')
+    B_2 = patsy.dmatrix(model.B[1].design_info,df,return_type='dataframe')
 
-    return A,[B_1,B_2],G_1,[gg_1,gg_2]
+    if len(model.groups) == 2:
+      return A,[B_1,B_2],G_1,[gg_1,gg_2]
 
   if len(model.groups) >= 3:
     gdf_3,gg_3,group_keys_3 = blmm.setup_groups(df,model.groups[2]['grouping'])
-    B_3 = patsy.dmatrix(model.B[3].design_info,df,return_type='dataframe')
+    B_3 = patsy.dmatrix(model.B[2].design_info,df,return_type='dataframe')
 
-    return A,[B_1,B_2,B_3],G_1,[gg_1,gg_2,gg_3]
+    if len(model.groups) == 2:
+      return A,[B_1,B_2,B_3],G_1,[gg_1,gg_2,gg_3]
 
-  if len(model.groups) == 4:
+  if len(model.groups) >= 4:
     gdf_4,gg_4,group_keys_4 = blmm.setup_groups(df,model.groups[3]['grouping'])
-    B_4 = patsy.dmatrix(model.B[4].design_info,df,return_type='dataframe')
-    return A,[B_1,B_2,B_3,B_4],G_1,[gg_1,gg_2,gg_3]
+    B_4 = patsy.dmatrix(model.B[3].design_info,df,return_type='dataframe')
+
+    if len(model.groups) == 4:
+      return A,[B_1,B_2,B_3,B_4],G_1,[gg_1,gg_2,gg_3,gg_4]
+
+  if len(model.groups) == 5:
+    gdf_5,gg_5,group_keys_5 = blmm.setup_groups(df,model.groups[4]['grouping'])
+    B_5 = patsy.dmatrix(model.B[4].design_info,df,return_type='dataframe')
+
+    return A,[B_1,B_2,B_3,B_4,B_5],G_1,[gg_1,gg_2,gg_3,gg_4,gg_5]
 
   return None
 
 def lmm(mean_formula,df,groups,eps_prior=1,fixed_prior=1,robust=False):
   #assert (len(groups) == 1) and (len(groups) <= 3)
-  assert (len(groups) in range(1,5))
+  assert (len(groups) in range(1,6))
 
   y,A = patsy.dmatrices(mean_formula,df,return_type='dataframe')
 
@@ -73,16 +84,28 @@ def lmm(mean_formula,df,groups,eps_prior=1,fixed_prior=1,robust=False):
                        [group_keys_1,group_keys_2,group_keys_3],
                        [B_1,B_2,B_3],G_1,eps_prior,fixed_prior)
 
-  if len(groups) == 4:
+  if len(groups) >= 4:
     gdf_4,gg_4,group_keys_4 = blmm.setup_groups(df,groups[3]['grouping'])
     B_4 = patsy.dmatrix(groups[3]['formula'],df,return_type='dataframe')
-    model = LmmModel(df,mean_formula,groups,robust,
-                     y,A,[gdf_1,gdf_2,gdf_3,gdf_4],[gg_1,gg_2,gg_3,gg_4],
-                     [group_keys_1,group_keys_2,group_keys_3,group_keys_4],
-                     [B_1,B_2,B_3,B_4],G_1,eps_prior,fixed_prior)
+
+    if len(groups) == 4:
+      model = LmmModel(df,mean_formula,groups,robust,
+                      y,A,[gdf_1,gdf_2,gdf_3,gdf_4],[gg_1,gg_2,gg_3,gg_4],
+                      [group_keys_1,group_keys_2,group_keys_3,group_keys_4],
+                      [B_1,B_2,B_3,B_4],G_1,eps_prior,fixed_prior)
+
+  if len(groups) == 5:
+    gdf_5,gg_5,group_keys_5 = blmm.setup_groups(df,groups[4]['grouping'])
+    B_5 = patsy.dmatrix(groups[4]['formula'],df,return_type='dataframe')
+
+    if len(groups) == 5:
+      model = LmmModel(df,mean_formula,groups,robust,
+                      y,A,[gdf_1,gdf_2,gdf_3,gdf_4,gdf_5],
+                      [gg_1,gg_2,gg_3,gg_4,gg_5],
+                      [group_keys_1,group_keys_2,group_keys_3,group_keys_4],
+                      [B_1,B_2,B_3,B_4,B_5],G_1,eps_prior,fixed_prior)
 
   return model
-
 
 
 class LmmModel(object):
@@ -177,6 +200,17 @@ class LmmModel(object):
     elif len(B) >= 3:
       y_hat += np.einsum('ik,jik->ij', B[3],self.fit['beta_4'][:,gg[3],:])
 
+    if 4 in marginalize:
+      y_hat += (np.einsum('ik,jlk->ij', B[4],self.fit['beta_5']) /
+                self.fit['beta_5'].shape[2])
+    elif 4 in randomize:
+      z_5 = np.random.normal(gg[4].unique(),self.fit['z_5'].shape[1])
+      beta_5 = np.einsum('ij,ijk,hj->ihj',self.fit['tau_5'],
+                         self.fit['L_Omega_5'],z_5)
+      y_hat += np.einsum('ij,jik->ij',B[4],beta_5[:,gg[4],:])
+    elif len(B) >= 4:
+      y_hat += np.einsum('ik,jik->ij', B[4],self.fit['beta_5'][:,gg[4],:])
+
     if use_dataframe:
       dfp = df.copy()
       dfp = dfp.iloc[np.repeat(np.arange(y_hat.shape[0]),y_hat.shape[1]),:]
@@ -192,7 +226,7 @@ class LmmModel(object):
 
   def validate(self,stats=default_stats,N=500,randomize=[],return_samples=False):
     samples = np.random.choice(self.fit['beta_1'].shape[0],size=N,replace=False)
-    y_hat = self.predict(self.df,randomize=randomize)
+    y_hat = self.predict(randomize=randomize)
 
     real_diff = self.y[:,np.newaxis] - y_hat[:,samples]
     if not self.robust:
@@ -271,13 +305,21 @@ class LmmModel(object):
       model_input["group3_var_prior"] = self.groups[2]['var_prior']
       model_input["group3_cor_prior"] = self.groups[2]['cor_prior']
 
-    if len(self.groups) == 4:
+    if len(self.groups) >= 4:
       model_input["B_4"] = self.B[3].ix[self.A.index]
       model_input["h_4"] = self.B[3].shape[1]
       model_input["gg_4"] = self.gg[3][self.A.index]+1
       model_input["g_4"] = self.gdf[3].shape[0]
       model_input["group4_var_prior"] = self.groups[3]['var_prior']
       model_input["group4_cor_prior"] = self.groups[3]['cor_prior']
+
+    if len(self.groups) == 5:
+      model_input["B_5"] = self.B[4].ix[self.A.index]
+      model_input["h_5"] = self.B[4].shape[1]
+      model_input["gg_5"] = self.gg[4][self.A.index]+1
+      model_input["g_5"] = self.gdf[4].shape[0]
+      model_input["group5_var_prior"] = self.groups[4]['var_prior']
+      model_input["group5_cor_prior"] = self.groups[4]['cor_prior']
 
     def init_fn():
       g_1,l_1 = self.G.shape
@@ -288,9 +330,12 @@ class LmmModel(object):
       if len(self.groups) >= 3:
         g_3 = self.gdf[2].shape[0]
         h_3 = self.B[2].shape[1]
-      if len(self.groups) == 4:
+      if len(self.groups) >= 4:
         g_4 = self.gdf[3].shape[0]
         h_4 = self.B[3].shape[1]
+      if len(self.groups) == 5:
+        g_5 = self.gdf[4].shape[0]
+        h_5 = self.B[4].shape[1]
 
       model_init = {"gamma_1": np.random.rand(l_1,h_1)*0.001,
                     "z_1": np.random.rand(h_1,g_1)+0.001,
@@ -313,6 +358,10 @@ class LmmModel(object):
         model_init["z_4"] = np.random.rand(h_4,g_4)+0.001
         model_init["L_Omega_4"] = np.zeros((h_4,h_4))
         model_init["tau_4"] = np.random.rand(h_4)+0.001
+      if len(self.groups) >= 5:
+        model_init["z_5"] = np.random.rand(h_5,g_5)+0.001
+        model_init["L_Omega_5"] = np.zeros((h_5,h_5))
+        model_init["tau_5"] = np.random.rand(h_5)+0.001
 
       model_init["sigma"] = self.eps_prior+np.random.rand()*0.001
 
@@ -339,6 +388,12 @@ class LmmModel(object):
       if self.robust:
           RuntimeError("Not implemented!")
       fit = model4.sampling(data=model_input,init=init_fn,iter=iters,
+                            chains=chains,warmup=warmup)
+
+    if len(self.groups) == 5:
+      if self.robust:
+          RuntimeError("Not implemented!")
+      fit = model5.sampling(data=model_input,init=init_fn,iter=iters,
                             chains=chains,warmup=warmup)
 
     self.fit = fit
