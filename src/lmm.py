@@ -11,10 +11,26 @@ model3 = blmm.load_model('lmm3',use_package_cache=True)
 model4 = blmm.load_model('lmm4',use_package_cache=True)
 model5 = blmm.load_model('lmm5',use_package_cache=True)
 
+def setup_groups(df,grouping):
+  grouped = df.groupby(grouping)
+  gdfindices = map(lambda g: g[0],grouped.groups.values())
+  gg = np.zeros(df.shape[0],'int_')
+  for i,g in enumerate(grouped.groups.values()):
+    gg[g] = i
+
+  gdf = df.iloc[gdfindices,:].copy()
+
+  return gdf,gg
+
+
 def dfmatrices(df,model):
   A = patsy.dmatrix(model.A.design_info,df,return_type='dataframe')
+  # avoids silently failing on legancy code that uses multiple groups
+  # (which I no longer support)
+  assert all(map(lambda x: len(x['grouping']) == 1,model.groups))
 
-  gdf_1,gg_1,group_keys_1 = blmm.setup_groups(df,model.groups[0]['grouping'])
+  gdf_1,gg_1 = setup_groups(df,model.groups[0])
+
   B_1 = patsy.dmatrix(model.B[0].design_info,df,return_type='dataframe')
   G_1 = patsy.dmatrix(model.G.design_info,gdf_1,return_type='dataframe')
 
@@ -22,28 +38,28 @@ def dfmatrices(df,model):
     return A,[B_1],G_1,[gg_1]
 
   if len(model.groups) >= 2:
-    gdf_2,gg_2,group_keys_2 = blmm.setup_groups(df,model.groups[1]['grouping'])
+    gdf_2,gg_2 = setup_groups(df,model.groups[1])
     B_2 = patsy.dmatrix(model.B[1].design_info,df,return_type='dataframe')
 
     if len(model.groups) == 2:
       return A,[B_1,B_2],G_1,[gg_1,gg_2]
 
   if len(model.groups) >= 3:
-    gdf_3,gg_3,group_keys_3 = blmm.setup_groups(df,model.groups[2]['grouping'])
+    gdf_3,gg_3 = setup_groups(df,model.groups[2])
     B_3 = patsy.dmatrix(model.B[2].design_info,df,return_type='dataframe')
 
     if len(model.groups) == 2:
       return A,[B_1,B_2,B_3],G_1,[gg_1,gg_2,gg_3]
 
   if len(model.groups) >= 4:
-    gdf_4,gg_4,group_keys_4 = blmm.setup_groups(df,model.groups[3]['grouping'])
+    gdf_4,gg_4 = setup_groups(df,model.groups[3])
     B_4 = patsy.dmatrix(model.B[3].design_info,df,return_type='dataframe')
 
     if len(model.groups) == 4:
       return A,[B_1,B_2,B_3,B_4],G_1,[gg_1,gg_2,gg_3,gg_4]
 
   if len(model.groups) == 5:
-    gdf_5,gg_5,group_keys_5 = blmm.setup_groups(df,model.groups[4]['grouping'])
+    gdf_5,gg_5 = setup_groups(df,model.groups[4])
     B_5 = patsy.dmatrix(model.B[4].design_info,df,return_type='dataframe')
 
     return A,[B_1,B_2,B_3,B_4,B_5],G_1,[gg_1,gg_2,gg_3,gg_4,gg_5]
@@ -56,53 +72,57 @@ def lmm(mean_formula,df,groups,eps_prior=1,fixed_prior=1,robust=False):
 
   y,A = patsy.dmatrices(mean_formula,df,return_type='dataframe')
 
-  gdf_1,gg_1,group_keys_1 = blmm.setup_groups(df,groups[0]['grouping'])
+  gdf_1,gg_1 = setup_groups(df,groups[0]['grouping'])
   B_1 = patsy.dmatrix(groups[0]['formula'],df,return_type='dataframe')
   G_1 = patsy.dmatrix(groups[0]['group_formula'],gdf_1,return_type='dataframe')
 
   if len(groups) == 1:
       model = LmmModel(df,mean_formula,groups,robust,
-                       y,A,[gdf_1],[gg_1],[group_keys_1],[B_1],G_1,
+                       y,A,[gdf_1],[gg_1],[B_1],G_1,
                        eps_prior,fixed_prior)
 
   if len(groups) >= 2:
-    gdf_2,gg_2,group_keys_2 = blmm.setup_groups(df,groups[1]['grouping'])
+    gdf_2,gg_2 = setup_groups(df,groups[1]['grouping'])
+
     B_2 = patsy.dmatrix(groups[1]['formula'],df,return_type='dataframe')
 
     if len(groups) == 2:
       model = LmmModel(df,mean_formula,groups,robust,
                        y,A,[gdf_1,gdf_2],[gg_1,gg_2],
-                       [group_keys_1,group_keys_2],[B_1,B_2],G_1,
+                       [B_1,B_2],G_1,
                        eps_prior,fixed_prior)
 
   if len(groups) >= 3:
-    gdf_3,gg_3,group_keys_3 = blmm.setup_groups(df,groups[2]['grouping'])
+    gdf_3,gg_3 = setup_groups(df,groups[2]['grouping'])
+
     B_3 = patsy.dmatrix(groups[2]['formula'],df,return_type='dataframe')
     if len(groups) == 3:
       model = LmmModel(df,mean_formula,groups,robust,
                        y,A,[gdf_1,gdf_2,gdf_3],[gg_1,gg_2,gg_3],
-                       [group_keys_1,group_keys_2,group_keys_3],
+
                        [B_1,B_2,B_3],G_1,eps_prior,fixed_prior)
 
   if len(groups) >= 4:
-    gdf_4,gg_4,group_keys_4 = blmm.setup_groups(df,groups[3]['grouping'])
+    gdf_4,gg_4 = setup_groups(df,groups[3]['grouping'])
+
     B_4 = patsy.dmatrix(groups[3]['formula'],df,return_type='dataframe')
 
     if len(groups) == 4:
       model = LmmModel(df,mean_formula,groups,robust,
                       y,A,[gdf_1,gdf_2,gdf_3,gdf_4],[gg_1,gg_2,gg_3,gg_4],
-                      [group_keys_1,group_keys_2,group_keys_3,group_keys_4],
+
                       [B_1,B_2,B_3,B_4],G_1,eps_prior,fixed_prior)
 
   if len(groups) == 5:
-    gdf_5,gg_5,group_keys_5 = blmm.setup_groups(df,groups[4]['grouping'])
+    gdf_5,gg_5 = setup_groups(df,groups[4]['grouping'])
+
     B_5 = patsy.dmatrix(groups[4]['formula'],df,return_type='dataframe')
 
     if len(groups) == 5:
       model = LmmModel(df,mean_formula,groups,robust,
                       y,A,[gdf_1,gdf_2,gdf_3,gdf_4,gdf_5],
                       [gg_1,gg_2,gg_3,gg_4,gg_5],
-                      [group_keys_1,group_keys_2,group_keys_3,group_keys_4],
+
                       [B_1,B_2,B_3,B_4,B_5],G_1,eps_prior,fixed_prior)
 
   return model
@@ -110,7 +130,7 @@ def lmm(mean_formula,df,groups,eps_prior=1,fixed_prior=1,robust=False):
 
 class LmmModel(object):
   def __init__(self,df,mean_formula,groups,robust,y,A,gdf,gg,
-               group_keys,B,G,eps_prior,fixed_prior):
+               B,G,eps_prior,fixed_prior):
     self.fit = None
     self.mean_formula = mean_formula
     self.groups = groups
@@ -119,7 +139,6 @@ class LmmModel(object):
     self.A = A
     self.gdf = gdf
     self.gg = gg
-    self.group_keys = group_keys
     self.B = B
     self.G = G
     self.eps_prior = eps_prior
@@ -131,10 +150,6 @@ class LmmModel(object):
     if df is not None:
       df = df.copy()
       A,B,G,gg = dfmatrices(df,self)
-      if not meanonly:
-          print """WARNING: grouping implementation is naive. If you don't have
-            the same exact set of groups for the new data set, the mappings to
-            groups in the model will be wrong."""
     else:
       df = self.df
       A = self.A
