@@ -12,6 +12,7 @@ model4 = blmm.load_model('lmm4',use_package_cache=True)
 model5 = blmm.load_model('lmm5',use_package_cache=True)
 
 def setup_groups(df,grouping):
+  df = df.reset_index()
   grouped = df.groupby(grouping)
   gdfindices = map(lambda g: g[0],grouped.groups.values())
   gg = np.zeros(df.shape[0],'int_')
@@ -22,6 +23,26 @@ def setup_groups(df,grouping):
 
   return gdf,gg
 
+def setup_newgroups(df,model,ix):
+  grouping = model.groups[ix]['grouping']
+  gdf,_ = setup_groups(model.df,grouping)
+  groups = gdf[grouping].copy()
+  groups['ix'] = np.arange(groups.shape[0])
+  group_indices = dict(zip(list(groups[grouping[0]]),list(groups['ix'])))
+
+  oldgroups = model.df[grouping[0]].unique()
+  allgroups = pd.Series(df[grouping[0]].unique())
+  newgroups = allgroups[~allgroups.isin(oldgroups)]
+
+  # for now, I don't allow new groups, only the ones analyzed
+  # in the orginal data. I can implement this later.
+  if len(newgroups) > 0:
+    print ("WARNING: new group inference is not implemented, ignoring this,"+
+           " assuming you will marginalize out the new group.")
+
+  gg = df[grouping[0]].apply(lambda g: group_indices.get(g,0))
+
+  return gdf,gg
 
 def dfmatrices(df,model):
   A = patsy.dmatrix(model.A.design_info,df,return_type='dataframe')
@@ -29,7 +50,7 @@ def dfmatrices(df,model):
   # (which I no longer support)
   assert all(map(lambda x: len(x['grouping']) == 1,model.groups))
 
-  gdf_1,gg_1 = setup_groups(df,model.groups[0])
+  gdf_1,gg_1 = setup_newgroups(df,model,0)
 
   B_1 = patsy.dmatrix(model.B[0].design_info,df,return_type='dataframe')
   G_1 = patsy.dmatrix(model.G.design_info,gdf_1,return_type='dataframe')
@@ -38,28 +59,28 @@ def dfmatrices(df,model):
     return A,[B_1],G_1,[gg_1]
 
   if len(model.groups) >= 2:
-    gdf_2,gg_2 = setup_groups(df,model.groups[1])
+    gdf_2,gg_2 = setup_newgroups(df,model,1)
     B_2 = patsy.dmatrix(model.B[1].design_info,df,return_type='dataframe')
 
     if len(model.groups) == 2:
       return A,[B_1,B_2],G_1,[gg_1,gg_2]
 
   if len(model.groups) >= 3:
-    gdf_3,gg_3 = setup_groups(df,model.groups[2])
+    gdf_3,gg_3 = setup_newgroups(df,model,2)
     B_3 = patsy.dmatrix(model.B[2].design_info,df,return_type='dataframe')
 
     if len(model.groups) == 2:
       return A,[B_1,B_2,B_3],G_1,[gg_1,gg_2,gg_3]
 
   if len(model.groups) >= 4:
-    gdf_4,gg_4 = setup_groups(df,model.groups[3])
+    gdf_4,gg_4 = setup_newgroups(df,model,3)
     B_4 = patsy.dmatrix(model.B[3].design_info,df,return_type='dataframe')
 
     if len(model.groups) == 4:
       return A,[B_1,B_2,B_3,B_4],G_1,[gg_1,gg_2,gg_3,gg_4]
 
   if len(model.groups) == 5:
-    gdf_5,gg_5 = setup_groups(df,model.groups[4])
+    gdf_5,gg_5 = setup_newgroups(df,model,4)
     B_5 = patsy.dmatrix(model.B[4].design_info,df,return_type='dataframe')
 
     return A,[B_1,B_2,B_3,B_4,B_5],G_1,[gg_1,gg_2,gg_3,gg_4,gg_5]
