@@ -14,11 +14,12 @@ model5 = blmm.load_model('lmm5',use_package_cache=True)
 def setup_groups(df,grouping):
   df = df.reset_index()
   grouped = df.groupby(grouping)
-  gdfindices = map(lambda g: g[0],grouped.groups.values())
+  gdfindices = np.zeros(len(grouped.groups))
   gg = np.zeros(df.shape[0],'int_')
 
   for i,key in enumerate(np.sort(grouped.groups.keys())):
     gg[grouped.groups[key]] = i
+    gdfindices[i] = grouped.groups[key][0]
 
   gdf = df.iloc[gdfindices,:].copy()
 
