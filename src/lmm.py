@@ -16,8 +16,9 @@ def setup_groups(df,grouping):
   grouped = df.groupby(grouping)
   gdfindices = map(lambda g: g[0],grouped.groups.values())
   gg = np.zeros(df.shape[0],'int_')
-  for i,g in enumerate(grouped.groups.values()):
-    gg[g] = i
+
+  for i,key in enumerate(np.sort(grouped.groups.keys())):
+    gg[grouped.groups[key]] = i
 
   gdf = df.iloc[gdfindices,:].copy()
 
@@ -32,11 +33,10 @@ def setup_newgroups(df,model,ix):
 
   oldgroups = model.df[grouping[0]].unique()
   allgroups = pd.Series(df[grouping[0]].unique())
-  newgroups = allgroups[~allgroups.isin(oldgroups)]
 
   # for now, I don't allow new groups, only the ones analyzed
   # in the orginal data. I can implement this later.
-  if len(newgroups) > 0:
+  if not allgroups.isin(oldgroups).all():
     print ("WARNING: new group inference is not implemented, ignoring this,"+
            " assuming you will marginalize out the new group.")
 
