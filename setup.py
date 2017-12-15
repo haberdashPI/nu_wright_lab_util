@@ -8,4 +8,4 @@ setup(name='nu_wright_lab_util',version='0.1.0',author='David Little',
       requires=['statsmodels(>=0.5.0)',
                 'pystan(>=2.17.0)',
                 'patsy(>=0.3.0)','matplotlib',
-                'numpy','pandas','appdirs'])
+                'numpy','pandas','appdirs','scipy', 'h5py', 'pymc3'])

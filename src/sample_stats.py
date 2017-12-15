@@ -1,8 +1,7 @@
 import scipy
 import numpy as np
 import pandas as pd
-from pymc.utils import hpd
-
+from pymc3.stats import hpd
 
 def p_value(xs,axis=None):
   diffs = np.sign(xs) != np.sign(np.nanmedian(xs,axis=axis))
