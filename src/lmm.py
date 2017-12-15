@@ -6,6 +6,7 @@ from pylab_util.sample_stats import *
 
 model1 = blmm.load_model('lmm1',use_package_cache=True)
 model2 = blmm.load_model('lmm2',use_package_cache=True)
+model2_nf = blmm.load_model('lmm2_nf',use_package_cache=True)
 rmodel2 = blmm.load_model('rlmm2',use_package_cache=True)
 model3 = blmm.load_model('lmm3',use_package_cache=True)
 model4 = blmm.load_model('lmm4',use_package_cache=True)
@@ -14,7 +15,7 @@ model5 = blmm.load_model('lmm5',use_package_cache=True)
 def setup_groups(df,grouping):
   df = df.reset_index()
   grouped = df.groupby(grouping)
-  gdfindices = np.zeros(len(grouped.groups))
+  gdfindices = np.zeros(len(grouped.groups),'int_')
   gg = np.zeros(df.shape[0],'int_')
 
   for i,key in enumerate(np.sort(grouped.groups.keys())):
@@ -309,7 +310,7 @@ class LmmModel(object):
     sd = 2*np.sqrt(lpd.shape[0] * np.std(lpd - p_waic))
     return waic,sd,np.sum(p_waic)
 
-  def sample(self,mean_init=0,iters=5,warmup=2,chains=1):
+  def sample(self,mean_init=0,iters=5,warmup=2,chains=1,**kwds):
     model_input = {"y": self.y,
                    "A": self.A, "n": len(self.y),
                    "k": self.A.shape[1],
@@ -325,6 +326,9 @@ class LmmModel(object):
                    "group1_mean_prior": self.groups[0]['mean_prior'],
                    "group1_var_prior": self.groups[0]['var_prior'],
                    "group1_cor_prior": self.groups[0]['cor_prior']}
+
+    # if self.A.shape[1] == 0:
+    #   del model_input["A"]
 
     if len(self.groups) >= 2:
       model_input["B_2"] = self.B[1].ix[self.A.index]
@@ -381,7 +385,7 @@ class LmmModel(object):
                     "alpha": mean_init+np.random.rand()*0.001}
 
       if self.A.shape[1] == 0:
-        model_init['alpha'] = []
+        del model_init['alpha']
 
       if len(self.groups) >= 2:
         model_init["z_2"] = np.random.rand(h_2,g_2)+0.001
@@ -408,30 +412,35 @@ class LmmModel(object):
       if self.robust:
           RuntimeError("Not implemented!")
       fit = model1.sampling(data=model_input,init=init_fn,iter=iters,
-                            chains=chains,warmup=warmup)
+                            chains=chains,warmup=warmup,**kwds)
     if len(self.groups) == 2:
       if not self.robust:
-        fit = model2.sampling(data=model_input,init=init_fn,iter=iters,
-                              chains=chains,warmup=warmup)
+        if self.A.shape[1] == 0:
+          fit = model2_nf.sampling(data=model_input,iter=iters,
+                                   chains=chains,warmup=warmup,**kwds)
+        else:
+          fit = model2.sampling(data=model_input,iter=iters,
+                                chains=chains,warmup=warmup,**kwds)
+
       else:
         fit = rmodel2.sampling(data=model_input,init=init_fn,iter=iters,
-                               chains=chains,warmup=warmup)
+                               chains=chains,warmup=warmup,**kwds)
     if len(self.groups) == 3:
       if self.robust:
           RuntimeError("Not implemented!")
       fit = model3.sampling(data=model_input,init=init_fn,iter=iters,
-                            chains=chains,warmup=warmup)
+                            chains=chains,warmup=warmup,**kwds)
     if len(self.groups) == 4:
       if self.robust:
           RuntimeError("Not implemented!")
       fit = model4.sampling(data=model_input,init=init_fn,iter=iters,
-                            chains=chains,warmup=warmup)
+                            chains=chains,warmup=warmup,**kwds)
 
     if len(self.groups) == 5:
       if self.robust:
           RuntimeError("Not implemented!")
       fit = model5.sampling(data=model_input,init=init_fn,iter=iters,
-                            chains=chains,warmup=warmup)
+                            chains=chains,warmup=warmup,**kwds)
 
     self.fit = fit
     return self
