@@ -73,6 +73,15 @@ def _organize_group_labels(grouped):
 
 
 def setup_groups(df,groups):
+    group_df = df.groupby(groups).head(1)
+    keys = group_df[groups]
+    for group in keys:
+        indices = df[groups]
+
+    return group_df.head(1),group_indices,group_keys
+
+
+def setup_groups__legacy(df,groups):
     group_df = df.groupby(groups)
     group_indices,group_keys = _organize_group_labels(group_df)
 
