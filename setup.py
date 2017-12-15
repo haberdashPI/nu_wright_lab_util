@@ -1,7 +1,6 @@
-from distutils.core import setup
-import pickle, os, datetime
+from setuptools import setup
 
-setup(name='nu_wright_lab_util',version='0.1.0',author='David Little',
+setup(name='nu_wright_lab_util',version='0.1.1',author='David Little',
       packages=['nu_wright_lab_util'],
       package_dir={'nu_wright_lab_util': 'src'},
       package_data={'nu_wright_lab_util': ['stan/*.stan']},
