@@ -1,5 +1,7 @@
+dist/
 build/
 src/stan/*.o
+*.egg-info
 *~
 *.pyc
 *.sublime-workspace
