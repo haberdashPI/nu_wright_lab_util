@@ -2,7 +2,7 @@ import scipy
 import numpy as np
 import patsy
 import blmm
-from pylab_util.sample_stats import *
+from nu_wright_lab_util.sample_stats import *
 
 model1 = blmm.load_model('lmm1',use_package_cache=True)
 model2 = blmm.load_model('lmm2',use_package_cache=True)
